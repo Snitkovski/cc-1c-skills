@@ -25,6 +25,7 @@ let page = null;
 let sessionPrefix = null; // e.g. "http://localhost:8081/bpdemo/ru_RU"
 let seanceId = null;
 let recorder = null; // { cdp, ffmpeg, startTime, outputPath }
+let highlightMode = false;
 
 const LOAD_TIMEOUT = 60000;
 const INIT_TIMEOUT = 60000;
@@ -1007,6 +1008,20 @@ export async function fillFields(fields) {
       results.push(r);
       continue;
     }
+    // Auto-highlight the field input before filling
+    if (highlightMode && r.inputId) {
+      try {
+        await page.evaluate(({ id }) => {
+          const target = document.getElementById(id);
+          if (!target) return;
+          let div = document.getElementById('__web_test_highlight');
+          if (!div) { div = document.createElement('div'); div.id = '__web_test_highlight'; document.body.appendChild(div); }
+          const r = target.getBoundingClientRect();
+          div.style.cssText = 'position:fixed;pointer-events:none;z-index:999998;top:' + (r.y-4) + 'px;left:' + (r.x-4) + 'px;width:' + (r.width+8) + 'px;height:' + (r.height+8) + 'px;outline:3px solid #e74c3c;border-radius:4px;box-shadow:0 0 16px #e74c3c80';
+        }, { id: r.inputId });
+        await page.waitForTimeout(500);
+      } catch {}
+    }
     try {
       // Auto-enable DCS checkbox if resolved via label
       if (r.dcsCheckbox && !r.dcsCheckbox.checked) {
@@ -1058,6 +1073,7 @@ export async function fillFields(fields) {
     } catch (e) {
       results.push({ field: r.field, error: e.message });
     }
+    if (highlightMode) try { await unhighlight(); } catch {}
   }
 
   const formData = await page.evaluate(readFormScript(formNum));
@@ -1073,6 +1089,8 @@ export async function fillFields(fields) {
 export async function clickElement(text, { dblclick } = {}) {
   ensureConnected();
   await dismissPendingErrors();
+  if (highlightMode) try { await highlight(text); await page.waitForTimeout(500); } catch {}
+  try {
 
   // First check if there's a confirmation dialog — click matching button
   const pending = await checkForErrors();
@@ -1294,6 +1312,8 @@ export async function clickElement(text, { dblclick } = {}) {
     }
   }
   return state;
+
+  } finally { if (highlightMode) try { await unhighlight(); } catch {} }
 }
 
 /**
@@ -1351,6 +1371,8 @@ export async function selectValue(fieldName, searchText) {
     btn = await page.evaluate(findFieldButtonScript(formNum, fieldName, 'CB'));
   }
   if (btn?.error) return btn;
+  if (highlightMode) try { await highlight(fieldName); await page.waitForTimeout(500); } catch {}
+  try {
 
   // Auto-enable DCS checkbox if resolved via label
   if (btn.dcsCheckbox) {
@@ -1440,6 +1462,9 @@ export async function selectValue(fieldName, searchText) {
       return true;
     })()`);
   }
+
+  // Remove highlight before DLB click — overlay would cover dropdown/selection form
+  if (highlightMode) try { await unhighlight(); } catch {}
 
   // 2. Click DLB (handle funcPanel / surface overlay intercept)
   const dlbSel = `[id="${btn.buttonId}"]`;
@@ -1565,6 +1590,8 @@ export async function selectValue(fieldName, searchText) {
   if (formResult) return formResult;
 
   throw new Error(`selectValue: DLB click for "${btn.fieldName}" did not open a popup or selection form`);
+
+  } finally { if (highlightMode) try { await unhighlight(); } catch {} }
 }
 
 /**
@@ -2618,6 +2645,143 @@ export async function hideTitleSlide() {
     const el = document.getElementById('__web_test_title');
     if (el) el.remove();
   });
+}
+
+/**
+ * Highlight an element on the page (visual accent for video recordings).
+ * Uses overlay div for visibility (not clipped by overflow:hidden), with
+ * requestAnimationFrame tracking so it follows layout shifts (async banners etc).
+ * @param {string} text  Element text/label (fuzzy match, same as clickElement/fillFields)
+ * @param {object} [opts]
+ * @param {string} [opts.color]    Outline color (default: '#e74c3c')
+ * @param {number} [opts.padding]  Extra padding around element (default: 4)
+ */
+export async function highlight(text, opts = {}) {
+  ensureConnected();
+  const { color = '#e74c3c', padding = 4 } = opts;
+
+  // Remove previous highlight first
+  await unhighlight();
+
+  let elId = null;
+
+  // 0. Try section or command (outside form scope)
+  elId = await page.evaluate(`(() => {
+    const norm = s => (s?.trim().replace(/\\u00a0/g, ' ') || '').replace(/ё/gi, 'е');
+    const target = ${JSON.stringify(normYo(text.toLowerCase()))};
+    // Sections
+    const secs = [...document.querySelectorAll('[id^="themesCell_theme_"]')];
+    let el = secs.find(e => norm(e.innerText).toLowerCase() === target);
+    if (!el) el = secs.find(e => norm(e.innerText).toLowerCase().includes(target));
+    if (el) return el.id;
+    // Commands
+    const cmds = [...document.querySelectorAll('[id^="cmd_"][id$="_txt"]')].filter(e => e.offsetWidth > 0);
+    el = cmds.find(e => norm(e.innerText).toLowerCase() === target);
+    if (!el) el = cmds.find(e => norm(e.innerText).toLowerCase().includes(target));
+    if (el) return el.id;
+    return null;
+  })()`);
+
+  // 1-2. Form-scoped search (buttons, links, fields, grid rows)
+  if (!elId) {
+    const formNum = await page.evaluate(detectFormScript());
+    if (formNum !== null) {
+      // 1. Try button/link/tab/gridRow via findClickTargetScript
+      const target = await page.evaluate(findClickTargetScript(formNum, text));
+      if (target && !target.error) {
+        if (target.id) {
+          elId = target.id;
+        } else if (target.x && target.y) {
+          // Grid row — find the gridLine element and tag it
+          elId = await page.evaluate(`(() => {
+            const p = ${JSON.stringify(`form${formNum}_`)};
+            const grid = document.querySelector('[id^="' + p + '"].grid');
+            if (!grid) return null;
+            const body = grid.querySelector('.gridBody');
+            if (!body) return null;
+            const norm = s => (s?.trim().replace(/\\u00a0/g, ' ') || '').replace(/ё/gi, 'е');
+            const target = ${JSON.stringify(normYo(text.toLowerCase()))};
+            for (const line of body.querySelectorAll('.gridLine')) {
+              const cells = [...line.querySelectorAll('.gridBoxText')].filter(b => b.offsetWidth > 0);
+              const rowText = cells.map(b => b.innerText?.trim() || '').join(' ').toLowerCase().replace(/ё/gi, 'е');
+              if (rowText.includes(target)) {
+                if (!line.id) line.id = '__wt_hl_tmp';
+                return line.id;
+              }
+            }
+            return null;
+          })()`);
+        }
+      }
+
+      // 2. If not found as button — try as field via resolveFieldsScript
+      if (!elId) {
+        const dummyFields = { [text]: '' };
+        const resolved = await page.evaluate(resolveFieldsScript(formNum, dummyFields));
+        if (resolved?.length > 0 && !resolved[0].error && resolved[0].inputId) {
+          elId = resolved[0].inputId;
+        }
+      }
+    }
+  }
+
+  if (!elId) throw new Error(`highlight: "${text}" not found`);
+
+  // Overlay div + rAF tracking loop (not clipped by overflow:hidden, follows layout shifts)
+  await page.evaluate(({ elId, color, padding }) => {
+    const target = document.getElementById(elId);
+    if (!target) return;
+    let div = document.getElementById('__web_test_highlight');
+    if (!div) {
+      div = document.createElement('div');
+      div.id = '__web_test_highlight';
+      document.body.appendChild(div);
+    }
+    function sync() {
+      const r = target.getBoundingClientRect();
+      div.style.cssText = [
+        'position:fixed', 'pointer-events:none', 'z-index:999998',
+        `top:${r.y - padding}px`, `left:${r.x - padding}px`,
+        `width:${r.width + padding * 2}px`, `height:${r.height + padding * 2}px`,
+        `outline:3px solid ${color}`, 'border-radius:4px',
+        `box-shadow:0 0 16px ${color}80`,
+      ].join(';');
+    }
+    sync();
+    // Track position changes via rAF
+    function tick() {
+      if (!document.getElementById('__web_test_highlight')) return; // stopped
+      sync();
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }, { elId, color, padding });
+}
+
+/** Remove the highlight overlay. */
+export async function unhighlight() {
+  ensureConnected();
+  await page.evaluate(() => {
+    const el = document.getElementById('__web_test_highlight');
+    if (el) el.remove(); // also stops rAF loop (id check)
+    // Clean up temp ID from grid rows
+    const tmp = document.getElementById('__wt_hl_tmp');
+    if (tmp) tmp.removeAttribute('id');
+  });
+}
+
+/**
+ * Toggle auto-highlight mode. When enabled, clickElement/fillFields/selectValue
+ * automatically highlight the target element before acting.
+ * @param {boolean} on  true to enable, false to disable
+ */
+export function setHighlight(on) {
+  highlightMode = !!on;
+}
+
+/** @returns {boolean} Whether auto-highlight mode is active. */
+export function isHighlightMode() {
+  return highlightMode;
 }
 
 // ============================================================
