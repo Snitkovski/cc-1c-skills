@@ -561,9 +561,11 @@ export function findClickTargetScript(formNum, text) {
       items.push({ id: el.id, name: el.dataset.content, label: '', kind: 'tab' });
     });
 
-    // Fuzzy match: exact name -> exact label -> includes name -> includes label
+    // Fuzzy match: exact name -> exact label -> startsWith name -> startsWith label -> includes name -> includes label
     let found = items.find(i => i.name.toLowerCase() === target);
     if (!found) found = items.find(i => i.label && i.label.toLowerCase() === target);
+    if (!found) found = items.find(i => i.name.toLowerCase().startsWith(target));
+    if (!found) found = items.find(i => i.label && i.label.toLowerCase().startsWith(target));
     if (!found) found = items.find(i => i.name.toLowerCase().includes(target));
     if (!found) found = items.find(i => i.label && i.label.toLowerCase().includes(target));
 
