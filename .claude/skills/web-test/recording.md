@@ -62,15 +62,16 @@ Start recording the browser viewport to an MP4 file.
 - Throws if already recording or browser not connected
 - Recording auto-stops when `disconnect()` is called
 
-### `stopRecording()` → `{ file, duration, size }`
+### `stopRecording()` → `{ file, duration, size, captions }`
 
-Stop recording and finalize the MP4 file.
+Stop recording and finalize the MP4 file. Saves `.captions.json` next to the video if captions were collected.
 
 | Return field | Type | Description |
 |-------------|------|-------------|
 | `file` | string | Absolute path to the MP4 file |
 | `duration` | number | Recording duration in seconds |
 | `size` | number | File size in bytes |
+| `captions` | number | Number of captions collected during recording |
 
 ### `isRecording()` → boolean
 
