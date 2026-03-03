@@ -27,6 +27,7 @@ let sessionPrefix = null; // e.g. "http://localhost:8081/bpdemo/ru_RU"
 let seanceId = null;
 let recorder = null; // { cdp, ffmpeg, startTime, outputPath, ffmpegError, captions }
 let lastCaptions = []; // captions from the last completed recording (for addNarration)
+let lastRecordingDuration = null; // wall-clock duration of the last recording (seconds)
 let highlightMode = false;
 
 const LOAD_TIMEOUT = 60000;
@@ -2439,6 +2440,7 @@ export async function startRecording(outputPath, opts = {}) {
   ensureConnected();
   if (recorder) throw new Error('Already recording. Call stopRecording() first.');
   lastCaptions = [];
+  lastRecordingDuration = null;
 
   const fps = opts.fps || 25;
   const quality = opts.quality || 80;
@@ -2483,15 +2485,20 @@ export async function startRecording(outputPath, opts = {}) {
     const now = Date.now();
 
     if (!ffmpeg.stdin.destroyed) {
+      let framesWritten = 0;
       if (lastFrameTime && lastFrameBuf) {
         // Fill the gap with duplicates of the previous frame
         const gap = now - lastFrameTime;
         const dupes = Math.round(gap / frameDuration) - 1;
         for (let i = 0; i < dupes && i < fps * 2; i++) {
           ffmpeg.stdin.write(lastFrameBuf);
+          framesWritten++;
         }
       }
       ffmpeg.stdin.write(buf);
+      framesWritten++;
+      // Track actual video timeline position (accounts for frame duplication)
+      if (recorder) recorder.videoTimeMs += framesWritten * frameDuration;
     }
 
     lastFrameTime = now;
@@ -2506,7 +2513,7 @@ export async function startRecording(outputPath, opts = {}) {
     everyNthFrame: 1
   });
 
-  recorder = { cdp, ffmpeg, startTime: Date.now(), outputPath: resolvedPath, ffmpegError: '', captions: [] };
+  recorder = { cdp, ffmpeg, startTime: Date.now(), outputPath: resolvedPath, ffmpegError: '', captions: [], videoTimeMs: 0 };
   // Redirect stderr accumulation to the recorder object
   ffmpeg.stderr.removeAllListeners('data');
   ffmpeg.stderr.on('data', d => { recorder.ffmpegError += d.toString(); });
@@ -2550,9 +2557,10 @@ export async function stopRecording() {
 
   // Preserve captions for addNarration()
   lastCaptions = recorder.captions || [];
+  lastRecordingDuration = duration;
   if (lastCaptions.length) {
     const captionsPath = outputPath.replace(/\.[^.]+$/, '.captions.json');
-    const captionsData = { recordingDuration: duration, captions: lastCaptions };
+    const captionsData = { recordingDuration: duration, videoTimestamps: true, captions: lastCaptions };
     writeFileSync(captionsPath, JSON.stringify(captionsData, null, 2), 'utf-8');
   }
 
@@ -2584,7 +2592,8 @@ export async function showCaption(text, opts = {}) {
   // Collect caption for TTS narration if recording
   if (recorder && text.trim() && opts.speech !== false) {
     const speech = typeof opts.speech === 'string' ? opts.speech : text;
-    recorder.captions.push({ text, speech, time: Date.now() - recorder.startTime });
+    // Use video timeline position (accounts for frame duplication) instead of wall-clock
+    recorder.captions.push({ text, speech, time: Math.round(recorder.videoTimeMs) });
   }
   const position = opts.position || 'bottom';
   const fontSize = opts.fontSize || 24;
@@ -2652,19 +2661,26 @@ export async function addNarration(videoPath, opts = {}) {
 
   // Resolve captions: explicit > lastCaptions > .captions.json
   let captions = opts.captions;
-  let recordingDuration = null; // wall-clock duration of the recording (seconds)
+  let videoTimestamps = true; // new recordings use video-time timestamps (no scaling needed)
+  let recordingDuration = null; // wall-clock duration (for legacy scaling fallback)
   if (!captions || !captions.length) {
-    captions = lastCaptions.length ? [...lastCaptions] : null;
+    if (lastCaptions.length) {
+      captions = [...lastCaptions];
+      recordingDuration = lastRecordingDuration;
+      // Runtime captions always use video timestamps (set in showCaption)
+    }
   }
   if (!captions || !captions.length) {
     const captionsJsonPath = videoPath.replace(/\.[^.]+$/, '.captions.json');
     if (fsExistsSync(captionsJsonPath)) {
       const raw = JSON.parse(readFileSync(captionsJsonPath, 'utf-8'));
-      // Support both formats: array (old) and { recordingDuration, captions } (new)
+      // Support formats: array (old), { recordingDuration, captions } (v2), { videoTimestamps, captions } (v3)
       if (Array.isArray(raw)) {
         captions = raw;
+        videoTimestamps = false;
       } else {
         captions = raw.captions;
+        videoTimestamps = !!raw.videoTimestamps;
         recordingDuration = raw.recordingDuration || null;
       }
     }
@@ -2673,12 +2689,13 @@ export async function addNarration(videoPath, opts = {}) {
     throw new Error('No captions available. Record with showCaption() first, or pass opts.captions.');
   }
 
-  // Scale caption timestamps to match actual video duration
-  // (screencast frame duplication can cause video to be longer than wall-clock time)
   const videoDuration = getAudioDuration(videoPath, ffmpegPath);
-  if (recordingDuration && recordingDuration > 0) {
+
+  // Legacy fallback: scale wall-clock timestamps to video duration
+  // (only for old captions without videoTimestamps flag)
+  if (!videoTimestamps && recordingDuration && recordingDuration > 0) {
     const timeScale = videoDuration / recordingDuration;
-    if (Math.abs(timeScale - 1) > 0.005) { // only scale if >0.5% difference
+    if (Math.abs(timeScale - 1) > 0.005) {
       captions = captions.map(c => ({ ...c, time: Math.round(c.time * timeScale) }));
     }
   }
@@ -2721,55 +2738,49 @@ export async function addNarration(videoPath, opts = {}) {
       ttsFiles.push(...results);
     }
 
-    // Phase 2: Build timeline — interleave silence gaps and TTS segments
-    // Track actual accumulated position to prevent drift from MP3 frame quantization
-    const segments = []; // { file, type: 'silence'|'tts' }
-    let currentPosition = 0; // actual accumulated duration in seconds
+    // Phase 2+3: Place each TTS at its exact timestamp using adelay + amix
+    // This avoids MP3 frame quantization drift from silence-file concatenation
+    const ffmpegInputs = [];
+    const filterParts = [];
+    const mixLabels = [];
 
     for (let i = 0; i < captions.length; i++) {
-      const captionTimeSec = captions[i].time / 1000;
+      const captionTimeMs = Math.round(captions[i].time);
       const ttsFile = ttsFiles[i];
       const ttsDuration = getAudioDuration(ttsFile, ffmpegPath);
 
-      // Add silence to reach this caption's target timestamp
-      const silenceDuration = captionTimeSec - currentPosition;
-      if (silenceDuration > 0.05) {
-        const silenceFile = pathJoin(tempDir, `silence_${i}.mp3`);
-        generateSilence(silenceFile, silenceDuration, ffmpegPath);
-        segments.push({ file: silenceFile, type: 'silence' });
-        currentPosition += getAudioDuration(silenceFile, ffmpegPath);
-      }
+      ffmpegInputs.push('-i', ttsFile);
+      const filters = [];
 
-      // Speed up TTS if it's longer than gap to next caption (instead of trimming)
+      // Speed up TTS if it's longer than gap to next caption
       if (i < captions.length - 1) {
         const maxDuration = (captions[i + 1].time - captions[i].time) / 1000;
         if (ttsDuration > maxDuration && maxDuration > 0.1) {
-          const tempo = ttsDuration / maxDuration;
-          const spedFile = pathJoin(tempDir, `tts_${i}_sped.mp3`);
-          execFileSync(ffmpegPath, [
-            '-y', '-i', ttsFile, '-af', `atempo=${tempo.toFixed(4)}`,
-            '-c:a', 'libmp3lame', '-b:a', '128k', spedFile,
-          ], { stdio: 'pipe', timeout: 10000 });
-          segments.push({ file: spedFile, type: 'tts' });
-          currentPosition += getAudioDuration(spedFile, ffmpegPath);
-          continue;
+          const tempo = Math.min(ttsDuration / maxDuration, 2.5);
+          filters.push(`atempo=${tempo.toFixed(4)}`);
         }
       }
 
-      segments.push({ file: ttsFile, type: 'tts' });
-      currentPosition += ttsDuration;
+      // Delay to exact caption timestamp (milliseconds)
+      if (captionTimeMs > 0) {
+        filters.push(`adelay=${captionTimeMs}|${captionTimeMs}`);
+      }
+
+      const label = `a${i}`;
+      mixLabels.push(`[${label}]`);
+      filterParts.push(`[${i}]${filters.length ? filters.join(',') : 'acopy'}[${label}]`);
     }
 
-    // Phase 3: Concat all segments into a single narration track
-    const concatListPath = pathJoin(tempDir, 'concat.txt');
-    const concatContent = segments.map(s => `file '${s.file.replace(/\\/g, '/')}'`).join('\n');
-    writeFileSync(concatListPath, concatContent, 'utf-8');
+    const filterComplex = filterParts.join(';') + ';' +
+      mixLabels.join('') + `amix=inputs=${captions.length}:normalize=0`;
 
     const narrationPath = pathJoin(tempDir, 'narration.mp3');
     execFileSync(ffmpegPath, [
-      '-y', '-f', 'concat', '-safe', '0', '-i', concatListPath,
+      '-y', ...ffmpegInputs,
+      '-filter_complex', filterComplex,
+      '-t', String(Math.ceil(videoDuration)),
       '-c:a', 'libmp3lame', '-b:a', '128k', narrationPath,
-    ], { stdio: 'pipe', timeout: 60000 });
+    ], { stdio: 'pipe', timeout: 120000 });
 
     // Phase 4: Merge video + narration audio
     execFileSync(ffmpegPath, [
