@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-# switch.py v1.0 — Переключение навыков 1С между AI-платформами и рантаймами
+# switch.py v1.1 — Переключение навыков 1С между AI-платформами и рантаймами
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 """
 Копирует навыки из .claude/skills/ на другие AI-платформы (Cursor, Codex, Copilot,
-Kiro, Gemini CLI, OpenCode) с перезаписью путей, и/или переключает рантайм (PowerShell ↔ Python).
+Kiro, Gemini CLI, OpenCode, Windsurf, Kilo Code, Cline, Roo Code, Augment и др.)
+с перезаписью путей, и/или переключает рантайм (PowerShell ↔ Python).
 
 Использование:
   python scripts/switch.py                           # интерактивный режим
@@ -24,12 +25,18 @@ import sys
 # ---------------------------------------------------------------------------
 PLATFORMS = {
     'claude-code': '.claude/skills',
+    'agents':      '.agents/skills',
+    'augment':     '.augment/skills',
+    'cline':       '.cline/skills',
     'codex':       '.codex/skills',
     'cursor':      '.cursor/skills',
     'copilot':     '.github/skills',
     'gemini':      '.gemini/skills',
+    'kilo':        '.kilocode/skills',
     'kiro':        '.kiro/skills',
     'opencode':    '.opencode/skills',
+    'roo':         '.roo/skills',
+    'windsurf':    '.windsurf/skills',
 }
 
 SOURCE_PREFIX = '.claude/skills'
@@ -265,7 +272,7 @@ def ask_choice(prompt, options, default=1):
     print(f"\n{prompt}")
     for i, (label, hint) in enumerate(options, 1):
         marker = "*" if i == default else " "
-        print(f"  {marker}{i}. {label:<16} ({hint})")
+        print(f"  {marker}{i:>2}. {label:<16} ({hint})")
     while True:
         try:
             raw = input(f"\nВыбор [{default}]: ").strip()
@@ -289,14 +296,23 @@ def interactive_mode():
 
     platform_options = [
         ("Claude Code",    ".claude/skills/"),
+        ("Augment",        ".augment/skills/"),
+        ("Cline",          ".cline/skills/"),
         ("Cursor",         ".cursor/skills/"),
         ("GitHub Copilot", ".github/skills/"),
+        ("Kilo Code",      ".kilocode/skills/"),
         ("Kiro",           ".kiro/skills/"),
         ("OpenAI Codex",   ".codex/skills/"),
         ("Gemini CLI",     ".gemini/skills/"),
         ("OpenCode",       ".opencode/skills/"),
+        ("Roo Code",       ".roo/skills/"),
+        ("Windsurf",       ".windsurf/skills/"),
+        ("Agent Skills",   ".agents/skills/"),
     ]
-    platform_keys = ['claude-code', 'cursor', 'copilot', 'kiro', 'codex', 'gemini', 'opencode']
+    platform_keys = [
+        'claude-code', 'augment', 'cline', 'cursor', 'copilot', 'kilo',
+        'kiro', 'codex', 'gemini', 'opencode', 'roo', 'windsurf', 'agents',
+    ]
 
     choice = ask_choice("Для какой платформы настроить навыки?", platform_options)
     platform = platform_keys[choice - 1]

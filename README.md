@@ -49,7 +49,7 @@
 
 ### Другие AI-платформы
 
-Навыки совместимы с Cursor, GitHub Copilot, Kiro, OpenAI Codex, Gemini CLI и OpenCode. Скрипт `switch.py` копирует навыки в нужный формат с перезаписью путей:
+Навыки построены на открытом стандарте [Agent Skills](https://agentskills.io/specification) и совместимы с любой платформой, поддерживающей этот формат. Скрипт `switch.py` копирует навыки в нужный каталог с перезаписью путей:
 
 ```bash
 python scripts/switch.py                           # интерактивный режим (пошаговый диалог)
@@ -60,17 +60,25 @@ python scripts/switch.py --undo cursor             # удалить копию
 
 Поддерживаемые платформы:
 
-| Платформа | Целевой каталог | Автоактивация | Слеш-команды |
-|-----------|----------------|:---:|--------------|
-| Claude Code | `.claude/skills/` | да | `/epf-init`, `/mxl-compile`, ... |
-| Cursor | `.cursor/skills/` | да | через меню команд |
-| GitHub Copilot | `.github/skills/` | да | `/skills` в чате |
-| Kiro | `.kiro/skills/` | да | через steering |
-| OpenAI Codex | `.codex/skills/` | да | `$skill-name` |
-| Gemini CLI | `.gemini/skills/` | да | нет |
-| OpenCode | `.opencode/skills/` | да | через skill tool |
+| Платформа | Целевой каталог | `switch.py <platform>` |
+|-----------|----------------|------------------------|
+| Claude Code | `.claude/skills/` | `claude-code` |
+| Augment | `.augment/skills/` | `augment` |
+| Cline | `.cline/skills/` | `cline` |
+| Cursor | `.cursor/skills/` | `cursor` |
+| GitHub Copilot | `.github/skills/` | `copilot` |
+| Kilo Code | `.kilocode/skills/` | `kilo` |
+| Kiro | `.kiro/skills/` | `kiro` |
+| OpenAI Codex | `.codex/skills/` | `codex` |
+| Gemini CLI | `.gemini/skills/` | `gemini` |
+| OpenCode | `.opencode/skills/` | `opencode` |
+| Roo Code | `.roo/skills/` | `roo` |
+| Windsurf | `.windsurf/skills/` | `windsurf` |
+| Agent Skills | `.agents/skills/` | `agents` |
 
-Автоактивация — основной режим: просто опишите задачу своими словами, ассистент сам подберёт нужный навык по `description` в SKILL.md. Слеш-команды — для точного контроля, когда нужно вызвать конкретный навык.
+Некоторые платформы (Augment, Cline, VS Code/Copilot) также сканируют `.claude/skills/` как fallback — для них копирование необязательно, но `switch.py` даёт явный контроль над путями.
+
+Автоактивация — основной режим: просто опишите задачу своими словами, ассистент сам подберёт нужный навык по `description` в SKILL.md. Слеш-команды (например `/epf-init`) — для точного контроля, когда нужно вызвать конкретный навык.
 
 ### Переключение рантайма (PowerShell ↔ Python)
 
@@ -181,8 +189,7 @@ python scripts/switch.py --runtime powershell  # вернуть на PowerShell
 ├── web-test/            # Тестирование через веб-клиент 1С
 └── img-grid/            # Сетка для анализа изображений
 scripts/
-├── switch-to-python.py    # Переключение навыков на Python-рантайм
-└── switch-to-powershell.py # Возврат на PowerShell-рантайм
+└── switch.py              # Переключение платформы и рантайма (13 платформ)
 docs/
 ├── epf-guide.md            # Гайд: внешние обработки и отчёты
 ├── mxl-guide.md            # Гайд: табличный документ
