@@ -1500,7 +1500,7 @@ export async function clickElement(text, { dblclick } = {}) {
         // waitForSelector uses MutationObserver internally — doesn't block event loop.
         try {
           await page.waitForSelector(
-            '#modalSurface:not([style*="display: none"]), .balloon',
+            '#modalSurface:not([style*="display: none"]), .balloon, .confirm',
             { state: 'visible', timeout: 10000 }
           );
         } catch {}
