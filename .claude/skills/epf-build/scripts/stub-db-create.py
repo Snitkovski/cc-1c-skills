@@ -89,6 +89,68 @@ def scan_ref_types(source_dir):
     return type_map
 
 
+def scan_register_columns(source_dir):
+    """Scan Form.xml for register record set columns referenced via DataPath.
+    Returns {"RegisterType.RegisterName": {"col1": True, "col2": True}}."""
+    import xml.etree.ElementTree as ET
+
+    register_columns = {}
+    std_cols = {'LineNumber', 'Period', 'Recorder', 'Active', 'RecordType'}
+    rs_type_map = {
+        'InformationRegisterRecordSet': 'InformationRegister',
+        'AccumulationRegisterRecordSet': 'AccumulationRegister',
+        'AccountingRegisterRecordSet': 'AccountingRegister',
+        'CalculationRegisterRecordSet': 'CalculationRegister',
+    }
+    rs_pattern = re.compile(
+        r'^(?:cfg:|d\dp1:)(InformationRegisterRecordSet|AccumulationRegisterRecordSet'
+        r'|AccountingRegisterRecordSet|CalculationRegisterRecordSet)\.(.+)$'
+    )
+    dp_pattern = re.compile(r'<DataPath>([A-Za-z\u0400-\u04FF\d_]+)\.([A-Za-z\u0400-\u04FF\d_]+)</DataPath>')
+
+    ns = {
+        'v8': 'http://v8.1c.ru/8.1/data/core',
+        'f': 'http://v8.1c.ru/8.3/xcf/logform',
+    }
+
+    for dirpath, _, filenames in os.walk(source_dir):
+        for fn in filenames:
+            if fn != 'Form.xml':
+                continue
+            fp = os.path.join(dirpath, fn)
+            try:
+                with open(fp, 'r', encoding='utf-8-sig') as fh:
+                    content = fh.read()
+            except Exception:
+                continue
+            if '<Attributes>' not in content:
+                continue
+
+            # Parse form attributes to find register recordset types
+            reg_attr_map = {}  # formAttrName -> "RegisterType.RegisterName"
+            try:
+                root = ET.fromstring(content)
+                for attr_node in root.iter('{http://v8.1c.ru/8.3/xcf/logform}Attribute'):
+                    attr_name = attr_node.get('name', '')
+                    for type_node in attr_node.iter('{http://v8.1c.ru/8.1/data/core}Type'):
+                        m = rs_pattern.match(type_node.text or '')
+                        if m:
+                            reg_type = rs_type_map[m.group(1)]
+                            reg_key = f"{reg_type}.{m.group(2)}"
+                            reg_attr_map[attr_name] = reg_key
+                            register_columns.setdefault(reg_key, {})
+            except Exception:
+                continue
+
+            # Find DataPath references like "AttrName.ColumnName"
+            for m in dp_pattern.finditer(content):
+                attr_name, col_name = m.group(1), m.group(2)
+                if attr_name in reg_attr_map and col_name not in std_cols:
+                    register_columns[reg_attr_map[attr_name]][col_name] = True
+
+    return register_columns
+
+
 NS = (
     'xmlns="http://v8.1c.ru/8.3/MDClasses" xmlns:app="http://v8.1c.ru/8.2/managed-application/core" '
     'xmlns:cfg="http://v8.1c.ru/8.1/data/enterprise/current-config" '
@@ -722,6 +784,7 @@ def main():
     args = parser.parse_args()
 
     type_map = scan_ref_types(args.SourceDir)
+    register_columns = scan_register_columns(args.SourceDir)
     has_ref_types = len(type_map) > 0
 
     temp_base = args.TempBasePath or os.path.join(tempfile.gettempdir(), f'epf_stub_db_{random.randint(0,999999)}')
@@ -882,91 +945,77 @@ def main():
                 if meta_type == 'DefinedType':
                     child_obj_xml = ''
                 elif meta_type == 'InformationRegister':
-                    dim_uuid = new_uuid()
-                    child_obj_xml = f"""
-\t\t<ChildObjects>
-\t\t\t<Dimension uuid="{dim_uuid}">
+                    reg_key = f'InformationRegister.{obj_name}'
+                    cols = list(register_columns.get(reg_key, {}).keys()) or ['\u0417\u0430\u0433\u043b\u0443\u0448\u043a\u0430']
+                    parts = []
+                    for i, col in enumerate(cols):
+                        u = new_uuid()
+                        if i == 0:
+                            parts.append(f"""\t\t\t<Dimension uuid="{u}">
 \t\t\t\t<Properties>
-\t\t\t\t\t<Name>\u0417\u0430\u0433\u043b\u0443\u0448\u043a\u0430</Name>
-\t\t\t\t\t<Synonym/>
-\t\t\t\t\t<Comment/>
-\t\t\t\t\t<Type>
-\t\t\t\t\t\t<v8:Type>xs:string</v8:Type>
-\t\t\t\t\t\t<v8:StringQualifiers>
-\t\t\t\t\t\t\t<v8:Length>10</v8:Length>
-\t\t\t\t\t\t\t<v8:AllowedLength>Variable</v8:AllowedLength>
-\t\t\t\t\t\t</v8:StringQualifiers>
-\t\t\t\t\t</Type>
-\t\t\t\t\t<PasswordMode>false</PasswordMode>
-\t\t\t\t\t<Format/>
-\t\t\t\t\t<EditFormat/>
-\t\t\t\t\t<ToolTip/>
-\t\t\t\t\t<MarkNegatives>false</MarkNegatives>
-\t\t\t\t\t<Mask/>
-\t\t\t\t\t<MultiLine>false</MultiLine>
-\t\t\t\t\t<ExtendedEdit>false</ExtendedEdit>
-\t\t\t\t\t<MinValue xsi:nil="true"/>
-\t\t\t\t\t<MaxValue xsi:nil="true"/>
-\t\t\t\t\t<FillFromFillingValue>false</FillFromFillingValue>
-\t\t\t\t\t<FillValue xsi:nil="true"/>
-\t\t\t\t\t<FillChecking>DontCheck</FillChecking>
-\t\t\t\t\t<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems>
-\t\t\t\t\t<ChoiceParameterLinks/>
-\t\t\t\t\t<ChoiceParameters/>
-\t\t\t\t\t<QuickChoice>Auto</QuickChoice>
-\t\t\t\t\t<CreateOnInput>Auto</CreateOnInput>
-\t\t\t\t\t<ChoiceForm/>
-\t\t\t\t\t<LinkByType/>
-\t\t\t\t\t<ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
-\t\t\t\t\t<Master>false</Master>
-\t\t\t\t\t<MainFilter>true</MainFilter>
-\t\t\t\t\t<DenyIncompleteValues>false</DenyIncompleteValues>
-\t\t\t\t\t<Indexing>DontIndex</Indexing>
-\t\t\t\t\t<FullTextSearch>Use</FullTextSearch>
-\t\t\t\t\t<DataHistory>Use</DataHistory>
+\t\t\t\t\t<Name>{col}</Name>
+\t\t\t\t\t<Synonym/><Comment/>
+\t\t\t\t\t<Type><v8:Type>xs:string</v8:Type><v8:StringQualifiers><v8:Length>10</v8:Length><v8:AllowedLength>Variable</v8:AllowedLength></v8:StringQualifiers></Type>
+\t\t\t\t\t<PasswordMode>false</PasswordMode><Format/><EditFormat/><ToolTip/><MarkNegatives>false</MarkNegatives><Mask/>
+\t\t\t\t\t<MultiLine>false</MultiLine><ExtendedEdit>false</ExtendedEdit>
+\t\t\t\t\t<MinValue xsi:nil="true"/><MaxValue xsi:nil="true"/>
+\t\t\t\t\t<FillFromFillingValue>false</FillFromFillingValue><FillValue xsi:nil="true"/><FillChecking>DontCheck</FillChecking>
+\t\t\t\t\t<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems><ChoiceParameterLinks/><ChoiceParameters/>
+\t\t\t\t\t<QuickChoice>Auto</QuickChoice><CreateOnInput>Auto</CreateOnInput><ChoiceForm/><LinkByType/><ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
+\t\t\t\t\t<Master>false</Master><MainFilter>true</MainFilter><DenyIncompleteValues>false</DenyIncompleteValues>
+\t\t\t\t\t<Indexing>DontIndex</Indexing><FullTextSearch>Use</FullTextSearch><DataHistory>Use</DataHistory>
 \t\t\t\t</Properties>
-\t\t\t</Dimension>
-\t\t</ChildObjects>"""
+\t\t\t</Dimension>""")
+                        else:
+                            parts.append(f"""\t\t\t<Attribute uuid="{u}">
+\t\t\t\t<Properties>
+\t\t\t\t\t<Name>{col}</Name>
+\t\t\t\t\t<Synonym/><Comment/>
+\t\t\t\t\t<Type><v8:Type>xs:string</v8:Type><v8:StringQualifiers><v8:Length>10</v8:Length><v8:AllowedLength>Variable</v8:AllowedLength></v8:StringQualifiers></Type>
+\t\t\t\t\t<PasswordMode>false</PasswordMode><Format/><EditFormat/><ToolTip/><MarkNegatives>false</MarkNegatives><Mask/>
+\t\t\t\t\t<MultiLine>false</MultiLine><ExtendedEdit>false</ExtendedEdit>
+\t\t\t\t\t<MinValue xsi:nil="true"/><MaxValue xsi:nil="true"/>
+\t\t\t\t\t<FillFromFillingValue>false</FillFromFillingValue><FillValue xsi:nil="true"/><FillChecking>DontCheck</FillChecking>
+\t\t\t\t\t<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems><ChoiceParameterLinks/><ChoiceParameters/>
+\t\t\t\t\t<QuickChoice>Auto</QuickChoice><CreateOnInput>Auto</CreateOnInput><ChoiceForm/><LinkByType/><ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
+\t\t\t\t\t<Indexing>DontIndex</Indexing><FullTextSearch>Use</FullTextSearch><DataHistory>Use</DataHistory>
+\t\t\t\t</Properties>
+\t\t\t</Attribute>""")
+                    child_obj_xml = '\n\t\t<ChildObjects>\n' + '\n'.join(parts) + '\n\t\t</ChildObjects>'
                 elif meta_type in ('AccumulationRegister', 'AccountingRegister', 'CalculationRegister'):
-                    res_uuid = new_uuid()
-                    child_obj_xml = f"""
-\t\t<ChildObjects>
-\t\t\t<Resource uuid="{res_uuid}">
+                    reg_key = f'{meta_type}.{obj_name}'
+                    cols = list(register_columns.get(reg_key, {}).keys())
+                    parts = []
+                    # Required stub Resource
+                    parts.append(f"""\t\t\t<Resource uuid="{new_uuid()}">
 \t\t\t\t<Properties>
 \t\t\t\t\t<Name>\u0417\u0430\u0433\u043b\u0443\u0448\u043a\u0430</Name>
-\t\t\t\t\t<Synonym/>
-\t\t\t\t\t<Comment/>
-\t\t\t\t\t<Type>
-\t\t\t\t\t\t<v8:Type>xs:decimal</v8:Type>
-\t\t\t\t\t\t<v8:NumberQualifiers>
-\t\t\t\t\t\t\t<v8:Digits>15</v8:Digits>
-\t\t\t\t\t\t\t<v8:FractionDigits>2</v8:FractionDigits>
-\t\t\t\t\t\t\t<v8:AllowedSign>Any</v8:AllowedSign>
-\t\t\t\t\t\t</v8:NumberQualifiers>
-\t\t\t\t\t</Type>
-\t\t\t\t\t<PasswordMode>false</PasswordMode>
-\t\t\t\t\t<Format/>
-\t\t\t\t\t<EditFormat/>
-\t\t\t\t\t<ToolTip/>
-\t\t\t\t\t<MarkNegatives>false</MarkNegatives>
-\t\t\t\t\t<Mask/>
-\t\t\t\t\t<MultiLine>false</MultiLine>
-\t\t\t\t\t<ExtendedEdit>false</ExtendedEdit>
-\t\t\t\t\t<MinValue xsi:nil="true"/>
-\t\t\t\t\t<MaxValue xsi:nil="true"/>
-\t\t\t\t\t<FillChecking>DontCheck</FillChecking>
-\t\t\t\t\t<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems>
-\t\t\t\t\t<ChoiceParameterLinks/>
-\t\t\t\t\t<ChoiceParameters/>
-\t\t\t\t\t<QuickChoice>Auto</QuickChoice>
-\t\t\t\t\t<CreateOnInput>Auto</CreateOnInput>
-\t\t\t\t\t<ChoiceForm/>
-\t\t\t\t\t<LinkByType/>
-\t\t\t\t\t<ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
+\t\t\t\t\t<Synonym/><Comment/>
+\t\t\t\t\t<Type><v8:Type>xs:decimal</v8:Type><v8:NumberQualifiers><v8:Digits>15</v8:Digits><v8:FractionDigits>2</v8:FractionDigits><v8:AllowedSign>Any</v8:AllowedSign></v8:NumberQualifiers></Type>
+\t\t\t\t\t<PasswordMode>false</PasswordMode><Format/><EditFormat/><ToolTip/><MarkNegatives>false</MarkNegatives><Mask/>
+\t\t\t\t\t<MultiLine>false</MultiLine><ExtendedEdit>false</ExtendedEdit>
+\t\t\t\t\t<MinValue xsi:nil="true"/><MaxValue xsi:nil="true"/><FillChecking>DontCheck</FillChecking>
+\t\t\t\t\t<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems><ChoiceParameterLinks/><ChoiceParameters/>
+\t\t\t\t\t<QuickChoice>Auto</QuickChoice><CreateOnInput>Auto</CreateOnInput><ChoiceForm/><LinkByType/><ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
 \t\t\t\t\t<FullTextSearch>Use</FullTextSearch>
 \t\t\t\t</Properties>
-\t\t\t</Resource>
-\t\t</ChildObjects>"""
+\t\t\t</Resource>""")
+                    # Form-referenced columns as Dimensions
+                    for col in cols:
+                        parts.append(f"""\t\t\t<Dimension uuid="{new_uuid()}">
+\t\t\t\t<Properties>
+\t\t\t\t\t<Name>{col}</Name>
+\t\t\t\t\t<Synonym/><Comment/>
+\t\t\t\t\t<Type><v8:Type>xs:string</v8:Type><v8:StringQualifiers><v8:Length>10</v8:Length><v8:AllowedLength>Variable</v8:AllowedLength></v8:StringQualifiers></Type>
+\t\t\t\t\t<PasswordMode>false</PasswordMode><Format/><EditFormat/><ToolTip/><MarkNegatives>false</MarkNegatives><Mask/>
+\t\t\t\t\t<MultiLine>false</MultiLine><ExtendedEdit>false</ExtendedEdit>
+\t\t\t\t\t<MinValue xsi:nil="true"/><MaxValue xsi:nil="true"/><FillChecking>DontCheck</FillChecking>
+\t\t\t\t\t<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems><ChoiceParameterLinks/><ChoiceParameters/>
+\t\t\t\t\t<QuickChoice>Auto</QuickChoice><CreateOnInput>Auto</CreateOnInput><ChoiceForm/><LinkByType/><ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
+\t\t\t\t\t<FullTextSearch>Use</FullTextSearch>
+\t\t\t\t</Properties>
+\t\t\t</Dimension>""")
+                    child_obj_xml = '\n\t\t<ChildObjects>\n' + '\n'.join(parts) + '\n\t\t</ChildObjects>'
                 else:
                     child_obj_xml = '\n\t\t<ChildObjects/>'
 
@@ -1007,11 +1056,18 @@ def main():
 
         # UpdateDBCfg
         print('Updating database configuration...')
+        update_log = os.path.join(tempfile.gettempdir(), 'stub_update_log.txt')
         result = subprocess.run(
-            [args.V8Path, 'DESIGNER', f'/F{temp_base}', '/UpdateDBCfg', '/DisableStartupDialogs'],
+            [args.V8Path, 'DESIGNER', f'/F{temp_base}', '/UpdateDBCfg', '/Out', update_log, '/DisableStartupDialogs'],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
+            if os.path.isfile(update_log):
+                try:
+                    with open(update_log, 'r', encoding='utf-8-sig') as f:
+                        print(f.read())
+                except Exception:
+                    pass
             print(f'Failed to update DB config (code: {result.returncode})', file=sys.stderr)
             sys.exit(1)
 

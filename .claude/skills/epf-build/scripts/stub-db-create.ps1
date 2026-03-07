@@ -92,6 +92,73 @@ foreach ($f in $xmlFiles) {
 	}
 }
 
+# --- 1b. Scan Form.xml for register record set columns ---
+# When a form attribute has type like InformationRegisterRecordSet.XXX,
+# the form references columns via DataPath "AttrName.ColumnName".
+# We need to create matching dimensions/resources/attributes in stub registers.
+
+$registerColumns = @{}  # "RegisterType.RegisterName" -> @{ col1=$true; col2=$true }
+
+# Standard attributes that don't need explicit declaration
+$stdRegCols = @("LineNumber","Period","Recorder","Active","RecordType")
+
+foreach ($f in $xmlFiles) {
+	$content = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)
+
+	# Find form attributes with register record set types using XmlDocument for reliability
+	$regAttrMap = @{}  # formAttrName -> "RegisterType.RegisterName"
+
+	# Only process Form.xml files (they contain <Attributes> with <Attribute> children)
+	if ($f.Name -eq "Form.xml" -and $content -match '<Attributes>') {
+		try {
+			$xml = New-Object System.Xml.XmlDocument
+			$xml.LoadXml($content)
+			$nsMgr = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+			$nsMgr.AddNamespace("v8", "http://v8.1c.ru/8.1/data/core")
+			$nsMgr.AddNamespace("f", "http://v8.1c.ru/8.3/xcf/logform")
+			$attrNodes = $xml.SelectNodes("//f:Attributes/f:Attribute", $nsMgr)
+			foreach ($attrNode in $attrNodes) {
+				$attrName = $attrNode.GetAttribute("name")
+				$typeNodes = $attrNode.SelectNodes("f:Type/v8:Type", $nsMgr)
+				foreach ($tn in $typeNodes) {
+					$typeText = $tn.InnerText
+					$rsMatch = [regex]::Match($typeText, '^(?:cfg:|d\dp1:)(InformationRegisterRecordSet|AccumulationRegisterRecordSet|AccountingRegisterRecordSet|CalculationRegisterRecordSet)\.(.+)$')
+					if ($rsMatch.Success) {
+						$rsPrefix = $rsMatch.Groups[1].Value
+						$regName = $rsMatch.Groups[2].Value
+						$regType = switch ($rsPrefix) {
+							"InformationRegisterRecordSet"   { "InformationRegister" }
+							"AccumulationRegisterRecordSet"  { "AccumulationRegister" }
+							"AccountingRegisterRecordSet"    { "AccountingRegister" }
+							"CalculationRegisterRecordSet"   { "CalculationRegister" }
+						}
+						$regKey = "$regType.$regName"
+						$regAttrMap[$attrName] = $regKey
+						if (-not $registerColumns.ContainsKey($regKey)) {
+							$registerColumns[$regKey] = @{}
+						}
+					}
+				}
+			}
+		} catch {
+			# XML parse failed, skip
+		}
+	}
+
+	# Now find DataPath references like "AttrName.ColumnName"
+	if ($regAttrMap.Count -gt 0) {
+		$dpPattern = '<DataPath>([A-Za-z\u0400-\u04FF\d_]+)\.([A-Za-z\u0400-\u04FF\d_]+)</DataPath>'
+		foreach ($m in [regex]::Matches($content, $dpPattern)) {
+			$attrName = $m.Groups[1].Value
+			$colName = $m.Groups[2].Value
+			if ($regAttrMap.ContainsKey($attrName) -and $colName -notin $stdRegCols) {
+				$regKey = $regAttrMap[$attrName]
+				$registerColumns[$regKey][$colName] = $true
+			}
+		}
+	}
+}
+
 $hasRefTypes = $typeMap.Count -gt 0
 
 # --- 2. Determine TempBasePath ---
@@ -977,13 +1044,23 @@ $stdAttrs			<Characteristics/>
 		if ($metaType -eq "DefinedType") {
 			$childObjLine = ""
 		} elseif ($metaType -eq "InformationRegister") {
-			$dimUuid = [guid]::NewGuid().ToString()
-			$childObjLine = @"
-
-		<ChildObjects>
-			<Dimension uuid="$dimUuid">
+			# Check if we have actual column names from form scanning
+			$regKey = "InformationRegister.$objName"
+			$cols = if ($registerColumns.ContainsKey($regKey) -and $registerColumns[$regKey].Count -gt 0) {
+				$registerColumns[$regKey].Keys
+			} else {
+				@("Заглушка")
+			}
+			# First column as Dimension (for MainFilter), rest as Attributes (no index pressure)
+			$dimXmlParts = @()
+			$isFirst = $true
+			foreach ($colName in $cols) {
+				$elemUuid = [guid]::NewGuid().ToString()
+				if ($isFirst) {
+					$dimXmlParts += @"
+			<Dimension uuid="$elemUuid">
 				<Properties>
-					<Name>Заглушка</Name>
+					<Name>$colName</Name>
 					<Synonym/>
 					<Comment/>
 					<Type>
@@ -1022,14 +1099,63 @@ $stdAttrs			<Characteristics/>
 					<DataHistory>Use</DataHistory>
 				</Properties>
 			</Dimension>
-		</ChildObjects>
 "@
+					$isFirst = $false
+				} else {
+					$dimXmlParts += @"
+			<Attribute uuid="$elemUuid">
+				<Properties>
+					<Name>$colName</Name>
+					<Synonym/>
+					<Comment/>
+					<Type>
+						<v8:Type>xs:string</v8:Type>
+						<v8:StringQualifiers>
+							<v8:Length>10</v8:Length>
+							<v8:AllowedLength>Variable</v8:AllowedLength>
+						</v8:StringQualifiers>
+					</Type>
+					<PasswordMode>false</PasswordMode>
+					<Format/>
+					<EditFormat/>
+					<ToolTip/>
+					<MarkNegatives>false</MarkNegatives>
+					<Mask/>
+					<MultiLine>false</MultiLine>
+					<ExtendedEdit>false</ExtendedEdit>
+					<MinValue xsi:nil="true"/>
+					<MaxValue xsi:nil="true"/>
+					<FillFromFillingValue>false</FillFromFillingValue>
+					<FillValue xsi:nil="true"/>
+					<FillChecking>DontCheck</FillChecking>
+					<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems>
+					<ChoiceParameterLinks/>
+					<ChoiceParameters/>
+					<QuickChoice>Auto</QuickChoice>
+					<CreateOnInput>Auto</CreateOnInput>
+					<ChoiceForm/>
+					<LinkByType/>
+					<ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
+					<FullTextSearch>Use</FullTextSearch>
+				</Properties>
+			</Attribute>
+"@
+				}
+			}
+			$childObjLine = "`r`n`t`t<ChildObjects>`r`n$($dimXmlParts -join "`r`n")`r`n`t`t</ChildObjects>"
 		} elseif ($metaType -in @("AccumulationRegister","AccountingRegister","CalculationRegister")) {
-			$resUuid = [guid]::NewGuid().ToString()
-			$childObjLine = @"
-
-		<ChildObjects>
-			<Resource uuid="$resUuid">
+			# Check if we have actual column names from form scanning
+			$regKey = "$metaType.$objName"
+			$cols = if ($registerColumns.ContainsKey($regKey) -and $registerColumns[$regKey].Count -gt 0) {
+				$registerColumns[$regKey].Keys
+			} else {
+				@()
+			}
+			$childParts = @()
+			# AccumulationRegister requires at least one Resource
+			$stubResUuid = [guid]::NewGuid().ToString()
+			$childParts += @"
+			<Resource uuid="$stubResUuid">
 				<Properties>
 					<Name>Заглушка</Name>
 					<Synonym/>
@@ -1064,8 +1190,48 @@ $stdAttrs			<Characteristics/>
 					<FullTextSearch>Use</FullTextSearch>
 				</Properties>
 			</Resource>
-		</ChildObjects>
 "@
+			# Add all form-referenced columns as Dimensions (short strings to avoid index overflow)
+			foreach ($colName in $cols) {
+				$dimUuid = [guid]::NewGuid().ToString()
+				$childParts += @"
+			<Dimension uuid="$dimUuid">
+				<Properties>
+					<Name>$colName</Name>
+					<Synonym/>
+					<Comment/>
+					<Type>
+						<v8:Type>xs:string</v8:Type>
+						<v8:StringQualifiers>
+							<v8:Length>10</v8:Length>
+							<v8:AllowedLength>Variable</v8:AllowedLength>
+						</v8:StringQualifiers>
+					</Type>
+					<PasswordMode>false</PasswordMode>
+					<Format/>
+					<EditFormat/>
+					<ToolTip/>
+					<MarkNegatives>false</MarkNegatives>
+					<Mask/>
+					<MultiLine>false</MultiLine>
+					<ExtendedEdit>false</ExtendedEdit>
+					<MinValue xsi:nil="true"/>
+					<MaxValue xsi:nil="true"/>
+					<FillChecking>DontCheck</FillChecking>
+					<ChoiceFoldersAndItems>Items</ChoiceFoldersAndItems>
+					<ChoiceParameterLinks/>
+					<ChoiceParameters/>
+					<QuickChoice>Auto</QuickChoice>
+					<CreateOnInput>Auto</CreateOnInput>
+					<ChoiceForm/>
+					<LinkByType/>
+					<ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>
+					<FullTextSearch>Use</FullTextSearch>
+				</Properties>
+			</Dimension>
+"@
+			}
+			$childObjLine = "`r`n`t`t<ChildObjects>`r`n$($childParts -join "`r`n")`r`n`t`t</ChildObjects>"
 		}
 		$objXml = @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1108,9 +1274,11 @@ if ($hasRefTypes) {
 
 	# UpdateDBCfg
 	Write-Host "Updating database configuration..."
-	$updateArgs = "DESIGNER /F`"$TempBasePath`" /UpdateDBCfg /DisableStartupDialogs"
+	$updateLog = Join-Path $env:TEMP "stub_update_log.txt"
+	$updateArgs = "DESIGNER /F`"$TempBasePath`" /UpdateDBCfg /Out `"$updateLog`" /DisableStartupDialogs"
 	$proc = Start-Process -FilePath $V8Path -ArgumentList $updateArgs -NoNewWindow -Wait -PassThru
 	if ($proc.ExitCode -ne 0) {
+		if (Test-Path $updateLog) { Get-Content $updateLog -Raw -ErrorAction SilentlyContinue | Write-Host }
 		Write-Error "Failed to update DB config (code: $($proc.ExitCode))"
 		exit 1
 	}
