@@ -216,6 +216,15 @@ $validPropertyValues = @{
 	"FillChecking"                   = @("DontCheck","ShowError","ShowWarning")
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
 	"DataHistory"                    = @("Use","DontUse")
+	"DependenceOnCalculationTypes"   = @("DontUse","RequireCalculationTypes")
+}
+
+# Properties forbidden per type (would cause LoadConfigFromFiles error)
+$forbiddenProperties = @{
+	"ChartOfCharacteristicTypes" = @("CodeType")
+	"ChartOfAccounts"            = @("Autonumbering","Hierarchical")
+	"ChartOfCalculationTypes"    = @("CheckUnique","Autonumbering")
+	"ExchangePlan"               = @("CodeType","CheckUnique","Autonumbering")
 }
 
 # --- 1. Parse XML ---
@@ -955,6 +964,20 @@ if ($propsNode) {
 		}
 	}
 
+	# DocumentJournal: RegisteredDocuments should not be empty
+	if ($mdType -eq "DocumentJournal") {
+		$regDocs = $propsNode.SelectSingleNode("md:RegisteredDocuments", $ns)
+		$hasRegDocs = $false
+		if ($regDocs) {
+			$items = $regDocs.SelectNodes("v8:Type", $ns)
+			if ($items.Count -gt 0) { $hasRegDocs = $true }
+		}
+		if (-not $hasRegDocs) {
+			Report-Warn "10. DocumentJournal: no RegisteredDocuments specified"
+			$check10Issues++
+		}
+	}
+
 	# ChartOfAccounts: ExtDimensionTypes should be set if MaxExtDimensionCount > 0
 	if ($mdType -eq "ChartOfAccounts") {
 		$maxExtDim = $propsNode.SelectSingleNode("md:MaxExtDimensionCount", $ns)
@@ -1069,6 +1092,27 @@ if ($mdType -eq "HTTPService" -and $childObjNode) {
 	}
 } else {
 	Report-OK "11. HTTPService/WebService: N/A"
+}
+
+if ($script:stopped) { & $finalize; exit 1 }
+
+# --- Check 12: Forbidden properties per type ---
+
+if ($propsNode -and $forbiddenProperties.ContainsKey($mdType)) {
+	$forbidden = $forbiddenProperties[$mdType]
+	$check12Ok = $true
+	foreach ($fp in $forbidden) {
+		$fpNode = $propsNode.SelectSingleNode("md:$fp", $ns)
+		if ($fpNode) {
+			Report-Error "12. Forbidden property '$fp' present in $mdType (will fail on LoadConfigFromFiles)"
+			$check12Ok = $false
+		}
+	}
+	if ($check12Ok) {
+		Report-OK "12. Forbidden properties: none found"
+	}
+} else {
+	Report-OK "12. Forbidden properties: N/A"
 }
 
 # --- Final output ---

@@ -216,6 +216,15 @@ valid_property_values = {
     "FillChecking":                 ["DontCheck", "ShowError", "ShowWarning"],
     "Indexing":                     ["DontIndex", "Index", "IndexWithAdditionalOrder"],
     "DataHistory":                  ["Use", "DontUse"],
+    "DependenceOnCalculationTypes": ["DontUse", "RequireCalculationTypes"],
+}
+
+# Properties forbidden per type (would cause LoadConfigFromFiles error)
+forbidden_properties = {
+    "ChartOfCharacteristicTypes": ["CodeType"],
+    "ChartOfAccounts":            ["Autonumbering", "Hierarchical"],
+    "ChartOfCalculationTypes":    ["CheckUnique", "Autonumbering"],
+    "ExchangePlan":               ["CodeType", "CheckUnique", "Autonumbering"],
 }
 
 # ── Namespaces ───────────────────────────────────────────────
@@ -898,6 +907,18 @@ if props_node is not None:
             check10_issues += 1
             print('[HINT] /meta-edit -Operation modify-property -Value "Task=Task.XXX"')
 
+    # DocumentJournal: RegisteredDocuments should not be empty
+    if md_type == 'DocumentJournal':
+        reg_docs = find(props_node, 'md:RegisteredDocuments')
+        has_reg_docs = False
+        if reg_docs is not None:
+            items = find_all(reg_docs, 'v8:Type')
+            if len(items) > 0:
+                has_reg_docs = True
+        if not has_reg_docs:
+            report_warn('10. DocumentJournal: no RegisteredDocuments specified')
+            check10_issues += 1
+
     # ChartOfAccounts: ExtDimensionTypes should be set if MaxExtDimensionCount > 0
     if md_type == 'ChartOfAccounts':
         max_ext_dim = find(props_node, 'md:MaxExtDimensionCount')
@@ -1000,6 +1021,25 @@ elif md_type == "WebService" and child_obj_node is not None:
         report_ok(f"11. WebService: {len(operations)} operation(s), {param_count} parameter(s)")
 else:
     report_ok("11. HTTPService/WebService: N/A")
+
+if stopped:
+    finalize()
+    sys.exit(1)
+
+# ── Check 12: Forbidden properties per type ──────────────────
+
+if props_node is not None and md_type in forbidden_properties:
+    forbidden = forbidden_properties[md_type]
+    check12_ok = True
+    for fp in forbidden:
+        fp_node = find(props_node, f"md:{fp}")
+        if fp_node is not None:
+            report_error(f"12. Forbidden property '{fp}' present in {md_type} (will fail on LoadConfigFromFiles)")
+            check12_ok = False
+    if check12_ok:
+        report_ok("12. Forbidden properties: none found")
+else:
+    report_ok("12. Forbidden properties: N/A")
 
 # ── Final output ──────────────────────────────────────────────
 
