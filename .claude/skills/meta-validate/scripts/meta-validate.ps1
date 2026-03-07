@@ -649,6 +649,41 @@ if ($childObjNode) {
 
 if ($script:stopped) { & $finalize; exit 1 }
 
+# --- Check 7b: Reserved attribute names ---
+
+$reservedAttrNames = @(
+	"Ref","DeletionMark","Code","Description","Date","Number","Posted","Parent","Owner",
+	"IsFolder","Predefined","PredefinedDataName","Recorder","Period","LineNumber","Active",
+	"Order","Type","OffBalance","Started","Completed","HeadTask","Executed","RoutePoint",
+	"BusinessProcess","ThisNode","SentNo","ReceivedNo","CalculationType","RegistrationPeriod",
+	"ReversingEntry","Account","ValueType","ActionPeriodIsBasic"
+)
+
+if ($childObjNode) {
+	$check7bOk = $true
+	$attrNodes = $childObjNode.SelectNodes("md:Attribute", $ns)
+	foreach ($attrNode in $attrNodes) {
+		$attrProps = $attrNode.SelectSingleNode("md:Properties", $ns)
+		if ($attrProps) {
+			$attrNameNode = $attrProps.SelectSingleNode("md:Name", $ns)
+			if ($attrNameNode -and $attrNameNode.InnerText) {
+				$an = $attrNameNode.InnerText
+				if ($reservedAttrNames -contains $an) {
+					Report-Warn "7b. Attribute '$an' conflicts with a standard attribute name"
+					$check7bOk = $false
+				}
+			}
+		}
+	}
+	if ($check7bOk) {
+		Report-OK "7b. Reserved attribute names: no conflicts"
+	}
+} else {
+	Report-OK "7b. Reserved attribute names: N/A"
+}
+
+if ($script:stopped) { & $finalize; exit 1 }
+
 # --- Check 8: Name uniqueness ---
 
 function Check-Uniqueness {
@@ -885,6 +920,51 @@ if ($propsNode) {
 			Report-Error "10. ScheduledJob: empty MethodName"
 			$check10Ok = $false
 			$check10Issues++
+		}
+	}
+
+	# AccountingRegister: ChartOfAccounts must not be empty
+	if ($mdType -eq "AccountingRegister") {
+		$coa = $propsNode.SelectSingleNode("md:ChartOfAccounts", $ns)
+		if (-not $coa -or -not $coa.InnerText.Trim()) {
+			Report-Error "10. AccountingRegister: empty ChartOfAccounts"
+			$check10Ok = $false
+			$check10Issues++
+			Write-Host "[HINT] /meta-edit -Operation modify-property -Value `"ChartOfAccounts=ChartOfAccounts.XXX`""
+		}
+	}
+
+	# CalculationRegister: ChartOfCalculationTypes must not be empty
+	if ($mdType -eq "CalculationRegister") {
+		$coct = $propsNode.SelectSingleNode("md:ChartOfCalculationTypes", $ns)
+		if (-not $coct -or -not $coct.InnerText.Trim()) {
+			Report-Error "10. CalculationRegister: empty ChartOfCalculationTypes"
+			$check10Ok = $false
+			$check10Issues++
+			Write-Host "[HINT] /meta-edit -Operation modify-property -Value `"ChartOfCalculationTypes=ChartOfCalculationTypes.XXX`""
+		}
+	}
+
+	# BusinessProcess: Task should not be empty
+	if ($mdType -eq "BusinessProcess") {
+		$taskProp = $propsNode.SelectSingleNode("md:Task", $ns)
+		if (-not $taskProp -or -not $taskProp.InnerText.Trim()) {
+			Report-Warn "10. BusinessProcess: empty Task reference"
+			$check10Issues++
+			Write-Host "[HINT] /meta-edit -Operation modify-property -Value `"Task=Task.XXX`""
+		}
+	}
+
+	# ChartOfAccounts: ExtDimensionTypes should be set if MaxExtDimensionCount > 0
+	if ($mdType -eq "ChartOfAccounts") {
+		$maxExtDim = $propsNode.SelectSingleNode("md:MaxExtDimensionCount", $ns)
+		if ($maxExtDim -and [int]$maxExtDim.InnerText -gt 0) {
+			$edt = $propsNode.SelectSingleNode("md:ExtDimensionTypes", $ns)
+			if (-not $edt -or -not $edt.InnerText.Trim()) {
+				Report-Warn "10. ChartOfAccounts: MaxExtDimensionCount>0 but ExtDimensionTypes is empty"
+				$check10Issues++
+				Write-Host "[HINT] /meta-edit -Operation modify-property -Value `"ExtDimensionTypes=ChartOfCharacteristicTypes.XXX`""
+			}
 		}
 	}
 }

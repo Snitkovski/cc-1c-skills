@@ -580,6 +580,7 @@ DSL для `columns` (§12).
 | `autonumbering` | `true` | Autonumbering |
 | `dataLockControlMode` | `Automatic` | DataLockControlMode |
 | `fullTextSearch` | `Use` | FullTextSearch |
+| `task` | `""` | Task (ссылка на Task.XXX) |
 | `attributes` | `[]` | → Attribute в ChildObjects |
 | `tabularSections` | `{}` | → TabularSection в ChildObjects |
 
@@ -587,7 +588,7 @@ DSL для `columns` (§12).
 Дополнительно: `Ext/Flowchart.xml` (заглушка карты маршрута).
 
 ```json
-{ "type": "BusinessProcess", "name": "Задание", "attributes": ["Описание: String(200)"] }
+{ "type": "BusinessProcess", "name": "Задание", "task": "Task.ЗадачаИсполнителя", "attributes": ["Описание: String(200)"] }
 ```
 
 ### 7.21 Task

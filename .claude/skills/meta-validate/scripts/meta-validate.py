@@ -626,6 +626,37 @@ if stopped:
     finalize()
     sys.exit(1)
 
+# ── Check 7b: Reserved attribute names ───────────────────────
+
+RESERVED_ATTR_NAMES = {
+    'Ref', 'DeletionMark', 'Code', 'Description', 'Date', 'Number', 'Posted',
+    'Parent', 'Owner', 'IsFolder', 'Predefined', 'PredefinedDataName',
+    'Recorder', 'Period', 'LineNumber', 'Active', 'Order', 'Type', 'OffBalance',
+    'Started', 'Completed', 'HeadTask', 'Executed', 'RoutePoint', 'BusinessProcess',
+    'ThisNode', 'SentNo', 'ReceivedNo', 'CalculationType', 'RegistrationPeriod',
+    'ReversingEntry', 'Account', 'ValueType', 'ActionPeriodIsBasic',
+}
+
+if child_obj_node is not None:
+    check7b_ok = True
+    for attr_node in find_all(child_obj_node, 'md:Attribute'):
+        attr_props = find(attr_node, 'md:Properties')
+        if attr_props is not None:
+            attr_name_node = find(attr_props, 'md:Name')
+            if attr_name_node is not None and inner_text(attr_name_node):
+                an = inner_text(attr_name_node)
+                if an in RESERVED_ATTR_NAMES:
+                    report_warn(f"7b. Attribute '{an}' conflicts with a standard attribute name")
+                    check7b_ok = False
+    if check7b_ok:
+        report_ok("7b. Reserved attribute names: no conflicts")
+else:
+    report_ok("7b. Reserved attribute names: N/A")
+
+if stopped:
+    finalize()
+    sys.exit(1)
+
 # ── Check 8: Name uniqueness ─────────────────────────────────
 
 
@@ -840,6 +871,47 @@ if props_node is not None:
             report_error("10. ScheduledJob: empty MethodName")
             check10_ok = False
             check10_issues += 1
+
+    # AccountingRegister: ChartOfAccounts must not be empty
+    if md_type == 'AccountingRegister':
+        coa = find(props_node, 'md:ChartOfAccounts')
+        if coa is None or not text_of(coa):
+            report_error('10. AccountingRegister: empty ChartOfAccounts')
+            check10_ok = False
+            check10_issues += 1
+            print('[HINT] /meta-edit -Operation modify-property -Value "ChartOfAccounts=ChartOfAccounts.XXX"')
+
+    # CalculationRegister: ChartOfCalculationTypes must not be empty
+    if md_type == 'CalculationRegister':
+        coct = find(props_node, 'md:ChartOfCalculationTypes')
+        if coct is None or not text_of(coct):
+            report_error('10. CalculationRegister: empty ChartOfCalculationTypes')
+            check10_ok = False
+            check10_issues += 1
+            print('[HINT] /meta-edit -Operation modify-property -Value "ChartOfCalculationTypes=ChartOfCalculationTypes.XXX"')
+
+    # BusinessProcess: Task should not be empty
+    if md_type == 'BusinessProcess':
+        task_prop = find(props_node, 'md:Task')
+        if task_prop is None or not text_of(task_prop):
+            report_warn('10. BusinessProcess: empty Task reference')
+            check10_issues += 1
+            print('[HINT] /meta-edit -Operation modify-property -Value "Task=Task.XXX"')
+
+    # ChartOfAccounts: ExtDimensionTypes should be set if MaxExtDimensionCount > 0
+    if md_type == 'ChartOfAccounts':
+        max_ext_dim = find(props_node, 'md:MaxExtDimensionCount')
+        if max_ext_dim is not None:
+            try:
+                med_val = int(inner_text(max_ext_dim) or '0')
+            except ValueError:
+                med_val = 0
+            if med_val > 0:
+                edt = find(props_node, 'md:ExtDimensionTypes')
+                if edt is None or not text_of(edt):
+                    report_warn('10. ChartOfAccounts: MaxExtDimensionCount>0 but ExtDimensionTypes is empty')
+                    check10_issues += 1
+                    print('[HINT] /meta-edit -Operation modify-property -Value "ExtDimensionTypes=ChartOfCharacteristicTypes.XXX"')
 
 if check10_ok and check10_issues == 0:
     report_ok("10. Cross-property consistency")

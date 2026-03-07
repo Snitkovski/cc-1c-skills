@@ -436,13 +436,16 @@ $script:generatedTypes = @{
 		@{ prefix = "CalculationRegisterList";      category = "List" }
 		@{ prefix = "CalculationRegisterRecordSet"; category = "RecordSet" }
 		@{ prefix = "CalculationRegisterRecordKey"; category = "RecordKey" }
+		@{ prefix = "RecalculationsManager";        category = "Recalcs" }
 	)
 	"ChartOfAccounts" = @(
-		@{ prefix = "ChartOfAccountsObject";    category = "Object" }
-		@{ prefix = "ChartOfAccountsRef";       category = "Ref" }
-		@{ prefix = "ChartOfAccountsSelection"; category = "Selection" }
-		@{ prefix = "ChartOfAccountsList";      category = "List" }
-		@{ prefix = "ChartOfAccountsManager";   category = "Manager" }
+		@{ prefix = "ChartOfAccountsObject";              category = "Object" }
+		@{ prefix = "ChartOfAccountsRef";                 category = "Ref" }
+		@{ prefix = "ChartOfAccountsSelection";           category = "Selection" }
+		@{ prefix = "ChartOfAccountsList";                category = "List" }
+		@{ prefix = "ChartOfAccountsManager";             category = "Manager" }
+		@{ prefix = "ChartOfAccountsExtDimensionTypes";   category = "ExtDimensionTypes" }
+		@{ prefix = "ChartOfAccountsExtDimensionTypesRow"; category = "ExtDimensionTypesRow" }
 	)
 	"ChartOfCharacteristicTypes" = @(
 		@{ prefix = "ChartOfCharacteristicTypesObject";         category = "Object" }
@@ -486,6 +489,9 @@ $script:generatedTypes = @{
 		@{ prefix = "ExchangePlanSelection"; category = "Selection" }
 		@{ prefix = "ExchangePlanList";      category = "List" }
 		@{ prefix = "ExchangePlanManager";   category = "Manager" }
+	)
+	"DefinedType" = @(
+		@{ prefix = "DefinedType"; category = "DefinedType" }
 	)
 	"DocumentJournal" = @(
 		@{ prefix = "DocumentJournalSelection"; category = "Selection" }
@@ -592,9 +598,26 @@ function Emit-TabularStandardAttributes {
 
 # --- 8. Attribute emitter ---
 
+$script:reservedAttrNames = @{
+	"Ref"="Ссылка"; "DeletionMark"="ПометкаУдаления"; "Code"="Код"; "Description"="Наименование"
+	"Date"="Дата"; "Number"="Номер"; "Posted"="Проведен"; "Parent"="Родитель"; "Owner"="Владелец"
+	"IsFolder"="ЭтоГруппа"; "Predefined"="Предопределенный"; "PredefinedDataName"="ИмяПредопределенныхДанных"
+	"Recorder"="Регистратор"; "Period"="Период"; "LineNumber"="НомерСтроки"; "Active"="Активность"
+	"Order"="Порядок"; "Type"="Тип"; "OffBalance"="Забалансовый"
+	"Started"="Стартован"; "Completed"="Завершен"; "HeadTask"="ВедущаяЗадача"
+	"Executed"="Выполнена"; "RoutePoint"="ТочкаМаршрута"; "BusinessProcess"="БизнесПроцесс"
+	"ThisNode"="ЭтотУзел"; "SentNo"="НомерОтправленного"; "ReceivedNo"="НомерПринятого"
+	"CalculationType"="ВидРасчета"; "RegistrationPeriod"="ПериодРегистрации"; "ReversingEntry"="СторноЗапись"
+	"Account"="Счет"; "ValueType"="ТипЗначения"; "ActionPeriodIsBasic"="ПериодДействияБазовый"
+}
+
 function Emit-Attribute {
 	param([string]$indent, $parsed, [string]$context)
 	# $context: "catalog", "document", "object", "processor", "tabular", "processor-tabular", "register"
+	$attrName = $parsed.name
+	if ($script:reservedAttrNames.ContainsKey($attrName) -or $script:reservedAttrNames.ContainsValue($attrName)) {
+		Write-Warning "Attribute '$attrName' conflicts with a standard attribute name. This may cause errors when loading into 1C."
+	}
 	$uuid = New-Guid-String
 	X "$indent<Attribute uuid=`"$uuid`">"
 	X "$indent`t<Properties>"
@@ -1440,19 +1463,13 @@ function Emit-ExchangePlanProperties {
 
 	$codeLength = if ($null -ne $def.codeLength) { "$($def.codeLength)" } else { "9" }
 	$descriptionLength = if ($null -ne $def.descriptionLength) { "$($def.descriptionLength)" } else { "100" }
-	$codeType = if ($def.codeType) { "$($def.codeType)" } else { "String" }
 	$codeAllowedLength = if ($def.codeAllowedLength) { "$($def.codeAllowedLength)" } else { "Variable" }
-	$autonumbering = if ($def.autonumbering -eq $false) { "false" } else { "true" }
-	$checkUnique = if ($def.checkUnique -eq $true) { "true" } else { "false" }
 
 	X "$i<CodeLength>$codeLength</CodeLength>"
-	X "$i<CodeType>$codeType</CodeType>"
 	X "$i<CodeAllowedLength>$codeAllowedLength</CodeAllowedLength>"
 	X "$i<DescriptionLength>$descriptionLength</DescriptionLength>"
 	X "$i<DefaultPresentation>AsDescription</DefaultPresentation>"
 	X "$i<EditType>InDialog</EditType>"
-	X "$i<CheckUnique>$checkUnique</CheckUnique>"
-	X "$i<Autonumbering>$autonumbering</Autonumbering>"
 
 	Emit-StandardAttributes $i "ExchangePlan"
 
@@ -1940,6 +1957,13 @@ function Emit-BusinessProcessProperties {
 
 	Emit-StandardAttributes $i "BusinessProcess"
 	X "$i<Characteristics/>"
+
+	$task = if ($def.task) { "$($def.task)" } else { "" }
+	if ($task) {
+		X "$i<Task>$task</Task>"
+	} else {
+		X "$i<Task/>"
+	}
 
 	X "$i<BasedOn/>"
 	X "$i<InputByString>"
@@ -2708,7 +2732,7 @@ if ($objType -in $typesWithModule) {
 if ($objType -eq "ExchangePlan") {
 	$contentPath = Join-Path $extDir "Content.xml"
 	if (-not (Test-Path $contentPath)) {
-		$contentXml = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`r`n<ExchangePlanContent xmlns=`"http://v8.1c.ru/8.3/MDClasses`" xmlns:xs=`"http://www.w3.org/2001/XMLSchema`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`"/>`r`n"
+		$contentXml = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`r`n<ExchangePlanContent xmlns=`"http://v8.1c.ru/8.3/xcf/extrnprops`" xmlns:xr=`"http://v8.1c.ru/8.3/xcf/readable`" version=`"2.17`"/>`r`n"
 		[System.IO.File]::WriteAllText($contentPath, $contentXml, $enc)
 		$modulesCreated += $contentPath
 	}
@@ -2716,7 +2740,7 @@ if ($objType -eq "ExchangePlan") {
 if ($objType -eq "BusinessProcess") {
 	$flowchartPath = Join-Path $extDir "Flowchart.xml"
 	if (-not (Test-Path $flowchartPath)) {
-		$flowchartXml = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`r`n<Flowchart xmlns=`"http://v8.1c.ru/8.3/MDClasses`"/>`r`n"
+		$flowchartXml = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`r`n<Flowchart xmlns=`"http://v8.1c.ru/8.3/MDClasses`" version=`"2.17`"/>`r`n"
 		[System.IO.File]::WriteAllText($flowchartPath, $flowchartXml, $enc)
 		$modulesCreated += $flowchartPath
 	}
@@ -2841,4 +2865,25 @@ switch ($regResult) {
 	"already"     { Write-Host "     Configuration.xml: <$childTag>$objName</$childTag> already registered" }
 	"no-childobj" { Write-Warning "Configuration.xml found but <ChildObjects> not found" }
 	"no-config"   { Write-Host "     Configuration.xml: not found at $configXmlPath (register manually)" }
+}
+
+# Cross-reference hints
+if ($objType -eq "AccountingRegister" -and -not $def.chartOfAccounts) {
+	Write-Host "[HINT] AccountingRegister requires ChartOfAccounts reference:"
+	Write-Host "       /meta-edit -Operation modify-property -Value `"ChartOfAccounts=ChartOfAccounts.XXX`""
+}
+if ($objType -eq "CalculationRegister" -and -not $def.chartOfCalculationTypes) {
+	Write-Host "[HINT] CalculationRegister requires ChartOfCalculationTypes reference:"
+	Write-Host "       /meta-edit -Operation modify-property -Value `"ChartOfCalculationTypes=ChartOfCalculationTypes.XXX`""
+}
+if ($objType -eq "BusinessProcess" -and -not $def.task) {
+	Write-Host "[HINT] BusinessProcess requires Task reference:"
+	Write-Host "       /meta-edit -Operation modify-property -Value `"Task=Task.XXX`""
+}
+if ($objType -eq "ChartOfAccounts") {
+	$maxExtDim = if ($null -ne $def.maxExtDimensionCount) { [int]$def.maxExtDimensionCount } else { 0 }
+	if ($maxExtDim -gt 0 -and -not $def.extDimensionTypes) {
+		Write-Host "[HINT] ChartOfAccounts with MaxExtDimensionCount>0 requires ExtDimensionTypes:"
+		Write-Host "       /meta-edit -Operation modify-property -Value `"ExtDimensionTypes=ChartOfCharacteristicTypes.XXX`""
+	}
 }
