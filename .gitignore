@@ -16,6 +16,9 @@ test-tmp/
 # Инструменты (portable Apache и т.д.)
 tools/
 
+# Отладка навыков (eval, trigger-test, run_loop результаты)
+debug/
+
 # Python кэш
 __pycache__/
 
