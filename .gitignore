@@ -16,6 +16,9 @@ test-tmp/
 # Инструменты (portable Apache и т.д.)
 tools/
 
+# Отладка навыков (eval, trigger-test, run_loop результаты)
+debug/
+
 # Python кэш
 __pycache__/
 
@@ -31,8 +34,15 @@ __pycache__/
 *.mp4
 
 # Навыки, скопированные для других AI-платформ (генерируются scripts/switch.py)
+.agents/
+.augment/
+.cline/
 .codex/
-.cursor/skills/
-.github/skills/
+.cursor/
 .gemini/
+.github/skills/
+.kilocode/
+.kiro/
 .opencode/
+.roo/
+.windsurf/
