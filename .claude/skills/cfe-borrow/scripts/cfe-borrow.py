@@ -711,7 +711,7 @@ def main():
                     pic_src_file = os.path.join(cfg_dir, "CommonPictures", f"{pic_name}.xml")
                     if os.path.isfile(pic_src_file):
                         src = read_source_object("CommonPicture", pic_name)
-                        borrowed_xml = build_borrowed_object_xml("CommonPicture", pic_name, src["uuid"], src["properties"])
+                        borrowed_xml = build_borrowed_object_xml("CommonPicture", pic_name, src["Uuid"], src["Properties"])
                         target_dir = os.path.join(ext_dir, "CommonPictures")
                         os.makedirs(target_dir, exist_ok=True)
                         target_file = os.path.join(target_dir, f"{pic_name}.xml")
@@ -750,7 +750,7 @@ def main():
                     style_src_file = os.path.join(cfg_dir, "StyleItems", f"{style_name}.xml")
                     if os.path.isfile(style_src_file):
                         src = read_source_object("StyleItem", style_name)
-                        borrowed_xml = build_borrowed_object_xml("StyleItem", style_name, src["uuid"], src["properties"])
+                        borrowed_xml = build_borrowed_object_xml("StyleItem", style_name, src["Uuid"], src["Properties"])
                         target_dir = os.path.join(ext_dir, "StyleItems")
                         os.makedirs(target_dir, exist_ok=True)
                         target_file = os.path.join(target_dir, f"{style_name}.xml")
@@ -809,7 +809,7 @@ def main():
 
                         # Build borrowed Enum with EnumValues
                         src_obj = read_source_object("Enum", enum_name)
-                        borrowed_xml = build_borrowed_object_xml("Enum", enum_name, src_obj["uuid"], src_obj["properties"])
+                        borrowed_xml = build_borrowed_object_xml("Enum", enum_name, src_obj["Uuid"], src_obj["Properties"])
                         if ev_xmls:
                             ev_block = "\n".join(ev_xmls)
                             borrowed_xml = borrowed_xml.replace("<ChildObjects/>", f"<ChildObjects>\n{ev_block}\n\t\t</ChildObjects>")
