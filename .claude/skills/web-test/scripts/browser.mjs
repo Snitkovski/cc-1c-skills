@@ -2342,7 +2342,7 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
             cols.push({ idx: i, text: ((t || box).innerText?.trim() || '').toLowerCase() });
           });
           const kl = ${JSON.stringify(key.toLowerCase())};
-          const klNoSpace = kl.replace(/\\s+/g, '');
+          const klNoSpace = kl.replace(/[\\s\\-]+/g, '');
           let colIdx = -1;
           const exact = cols.find(c => c.text === kl);
           if (exact) colIdx = exact.idx;
@@ -2515,8 +2515,8 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
         matchedKey = key;
         break;
       }
-      // CamelCase cell names have no spaces — try matching without spaces
-      const klNoSpace = kl.replace(/\s+/g, '');
+      // CamelCase cell names have no spaces/dashes — try matching without spaces and dashes
+      const klNoSpace = kl.replace(/[\s\-]+/g, '');
       if (klNoSpace && (cellLower.endsWith(klNoSpace) || cellLower.includes(klNoSpace))) {
         matchedKey = key;
         break;
