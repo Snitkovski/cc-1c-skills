@@ -205,7 +205,8 @@ const READ_FORM_FN = `function readForm(p) {
       }
       const rowCount = body ? body.querySelectorAll('.gridLine').length : 0;
       // Visual label from group title (e.g. "Входящие:" for grid "Входящие")
-      const titleEl = document.getElementById(p + name + '#title_div');
+      const titleEl = document.getElementById(p + name + '#title_div')
+                   || document.getElementById(p + 'Группа' + name + '#title_div');
       const label = titleEl ? (titleEl.innerText?.trim().replace(/:\\s*$/, '').replace(/\\u00a0/g, ' ') || null) : null;
       return { name, columns, rowCount, ...(label ? { label } : {}) };
     });
@@ -395,7 +396,8 @@ export function resolveGridScript(formNum, tableName) {
         });
       }
       // Visual label from group title element
-      const titleEl = document.getElementById(p + gridName + '#title_div');
+      const titleEl = document.getElementById(p + gridName + '#title_div')
+                   || document.getElementById(p + 'Группа' + gridName + '#title_div');
       const label = titleEl ? (titleEl.innerText?.trim().replace(/:\s*$/, '').replace(/\u00a0/g, ' ') || '') : '';
       return { idx, gridId, gridName, label, columns, el: g };
     });
