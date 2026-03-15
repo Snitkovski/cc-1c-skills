@@ -1,4 +1,4 @@
-// web-test dom v1.0 — DOM selectors and semantic mapping for 1C web client
+// web-test dom v1.1 — DOM selectors and semantic mapping for 1C web client
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * DOM selectors and semantic mapping for 1C:Enterprise web client.
@@ -235,6 +235,25 @@ const READ_FORM_FN = `function readForm(p) {
   }
   if (filters.length) result.filters = filters;
 
+  // Navigation panel (FormNavigationPanel) — lives in parent page{N} container
+  const navigation = [];
+  const formEl = document.querySelector('[id^="' + p + '"]');
+  if (formEl) {
+    let pageEl = formEl.parentElement;
+    while (pageEl && !(pageEl.id && /^page\\d+$/.test(pageEl.id))) pageEl = pageEl.parentElement;
+    if (pageEl) {
+      pageEl.querySelectorAll('.navigationItem').forEach(el => {
+        if (el.offsetWidth === 0) return;
+        const nameEl = el.querySelector('.navigationItemName');
+        const text = (nameEl?.innerText?.trim() || '').replace(/\\u00a0/g, ' ');
+        if (!text) return;
+        const nav = { name: text };
+        if (el.classList.contains('select')) nav.active = true;
+        navigation.push(nav);
+      });
+    }
+  }
+
   // Iframes
   let iframeCount = 0;
   document.querySelectorAll('[id^="' + p + '"] iframe, iframe[id^="' + p + '"]').forEach(el => {
@@ -245,6 +264,7 @@ const READ_FORM_FN = `function readForm(p) {
   if (fields.length) result.fields = fields;
   if (buttons.length) result.buttons = buttons;
   if (formTabs.length) result.tabs = formTabs;
+  if (navigation.length) result.navigation = navigation;
   if (texts.length) result.texts = texts;
   if (hyperlinks.length) result.hyperlinks = hyperlinks;
 
@@ -636,6 +656,22 @@ export function findClickTargetScript(formNum, text, { tableName, gridSelector }
     }).forEach(el => {
       items.push({ id: el.id, name: el.dataset.content, label: '', kind: 'tab' });
     });
+
+    // Navigation panel items (FormNavigationPanel) — in parent page{N}
+    const formEl = document.querySelector('[id^="' + p + '"]');
+    if (formEl) {
+      let pageEl = formEl.parentElement;
+      while (pageEl && !(pageEl.id && /^page\\d+$/.test(pageEl.id))) pageEl = pageEl.parentElement;
+      if (pageEl) {
+        pageEl.querySelectorAll('.navigationItem').forEach(el => {
+          if (el.offsetWidth === 0) return;
+          const nameEl = el.querySelector('.navigationItemName');
+          const text = norm(nameEl?.innerText || '');
+          if (!text) return;
+          items.push({ id: el.id, name: text, label: '', kind: 'navigation' });
+        });
+      }
+    }
 
     // When table is specified, scope button search to grid's parent container
     if (gridSelector) {

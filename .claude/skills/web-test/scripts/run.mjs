@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// web-test run v1.0 — CLI runner for 1C web client automation
+// web-test run v1.1 — CLI runner for 1C web client automation
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * CLI runner for 1C web client automation.
@@ -74,7 +74,8 @@ async function handleRequest(req, res) {
   try {
     if (req.method === 'POST' && req.url === '/exec') {
       const code = await readBody(req);
-      const result = await executeScript(code);
+      const noRecord = req.headers['x-no-record'] === '1';
+      const result = await executeScript(code, { noRecord });
       json(res, result);
 
     } else if (req.method === 'GET' && req.url === '/shot') {
@@ -100,7 +101,7 @@ async function handleRequest(req, res) {
   }
 }
 
-async function executeScript(code) {
+async function executeScript(code, { noRecord } = {}) {
   const output = [];
   const origLog = console.log;
   const origErr = console.error;
@@ -116,6 +117,16 @@ async function executeScript(code) {
     }
     exports.writeFileSync = writeFileSync;
     exports.readFileSync = readFileSync;
+
+    // --no-record: stub all recording/narration functions as no-ops
+    if (noRecord) {
+      const noop = async () => {};
+      for (const fn of ['startRecording', 'stopRecording', 'addNarration', 'showCaption', 'hideCaption', 'showTitleSlide', 'hideTitleSlide']) {
+        exports[fn] = noop;
+      }
+      exports.isRecording = () => false;
+      exports.getCaptions = () => [];
+    }
 
     // Wrap action functions to auto-detect 1C errors (modal, balloon)
     // and stop execution immediately with diagnostic info
@@ -205,16 +216,13 @@ async function cmdExec(fileOrDash, flags = {}) {
     ? await readStdin()
     : readFileSync(resolve(fileOrDash), 'utf-8');
 
-  if (flags.noRecord) {
-    // Inject no-op record() before user code
-    code = 'async function record() {} // --no-record\n' + code;
-  }
-
   const sess = loadSession();
+  const headers = {};
+  if (flags.noRecord) headers['x-no-record'] = '1';
   const result = await new Promise((resolve, reject) => {
     const req = http.request({
       hostname: '127.0.0.1', port: sess.port, path: '/exec',
-      method: 'POST', timeout: 10 * 60 * 1000,
+      method: 'POST', timeout: 10 * 60 * 1000, headers,
     }, res => {
       let data = '';
       res.on('data', chunk => data += chunk);

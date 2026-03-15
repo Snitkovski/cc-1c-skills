@@ -121,10 +121,12 @@ Switch to an already-open tab/window (fuzzy match).
 
 ### Reading form state
 
-#### `getFormState()` → `{ fields, buttons, tabs, table, tables, filters, reportSettings? }`
+#### `getFormState()` → `{ fields, buttons, tabs, navigation?, table, tables, filters, reportSettings? }`
 Returns current form structure. This is the primary way to understand what's on screen.
 
 **fields** — each field has: `name`, `value`, `label?`, `actions?` (select, clear, open), `required?` (true for unfilled mandatory fields)
+
+**navigation** — form navigation panel links (for objects with subordinate catalogs): `[{ name, active? }]`. Clickable via `clickElement()`. Only present when the form has a navigation panel (e.g. "Основное", "Объекты метаданных", "Подсистемы").
 
 **tables** — array of all visible grids: `[{ name, columns, rowCount, label? }]`. `label` is the visual group title shown on screen (e.g. "Входящие"), absent when grid has no visible title. Use `readTable()` for actual data.
 
@@ -197,7 +199,7 @@ Sections + all open tabs.
 ### Actions
 
 #### `clickElement(text, { dblclick?, table?, toggle? })` → form state
-Click button, hyperlink, tab, or grid row (fuzzy match).
+Click button, hyperlink, tab, navigation panel link, or grid row (fuzzy match).
 
 - `table` — scope button search to a specific grid's command panel (by name from `tables[]`):
   ```js
