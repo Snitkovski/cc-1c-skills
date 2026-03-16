@@ -2537,7 +2537,10 @@ export async function fillTableRow(fields, { tab, add, row, table } = {}) {
     if (cell.tag !== 'INPUT' || !cell.fullName) {
       // Not in an editable grid cell — Tab past (ERP has DIV focus between cells)
       nonInputCount++;
-      if (nonInputCount > 3) break; // truly exited edit mode
+      // If only checkbox fields remain unfilled, stop Tab'ing to avoid creating extra rows
+      const onlyCheckboxLeft = [...pending.values()].every(p => p.filled ||
+        ['true', 'false', 'да', 'нет', '1', '0', 'yes', 'no'].includes(p.value.toLowerCase().trim()));
+      if (nonInputCount > 3 || onlyCheckboxLeft) break;
       await page.keyboard.press('Tab');
       await page.waitForTimeout(300);
       continue;
