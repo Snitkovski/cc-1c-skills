@@ -771,7 +771,7 @@ export function findClickTargetScript(formNum, text, { tableName, gridSelector }
       const lines = [...body.querySelectorAll('.gridLine')];
       for (const line of lines) {
         const textBoxes = [...line.querySelectorAll('.gridBoxText')].filter(b => b.offsetWidth > 0);
-        const rowTexts = textBoxes.map(b => b.innerText?.trim() || '').filter(Boolean);
+        const rowTexts = textBoxes.map(b => norm(b.innerText) || '').filter(Boolean);
         const firstCell = rowTexts[0]?.toLowerCase() || '';
         const rowText = rowTexts.join(' ').toLowerCase();
         if (firstCell === target || rowText === target || (target.length >= 4 && (firstCell.includes(target) || rowText.includes(target)))) {
