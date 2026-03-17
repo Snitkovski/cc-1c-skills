@@ -148,8 +148,17 @@ const READ_FORM_FN = `function readForm(p) {
   document.querySelectorAll('[id^="' + p + '"].frameButton, [id^="' + p + '"] .frameButton').forEach(el => {
     if (el.offsetWidth === 0) return;
     const text = el.innerText?.trim();
-    if (!text) return;
-    buttons.push({ name: text, frame: true });
+    const idName = el.id?.replace(p, '') || '';
+    if (!text && !idName) return;
+    buttons.push({ name: text || idName, frame: true });
+  });
+
+  // Tumbler items
+  document.querySelectorAll('[id^="' + p + '"].tumblerItem').forEach(el => {
+    if (el.offsetWidth === 0) return;
+    const text = el.innerText?.trim();
+    const idName = el.id?.replace(p, '') || '';
+    buttons.push({ name: text || idName, tumbler: true });
   });
 
   // Tabs — scoped to form by checking ancestor IDs
@@ -664,8 +673,16 @@ export function findClickTargetScript(formNum, text, { tableName, gridSelector }
     // Frame buttons
     [...document.querySelectorAll('[id^="' + p + '"] .frameButton, [id^="' + p + '"].frameButton')].filter(el => el.offsetWidth > 0).forEach(el => {
       const text = norm(el.innerText);
-      if (!text) return;
-      items.push({ id: el.id, name: text, label: '', kind: 'frameButton' });
+      const idName = el.id.replace(p, '');
+      if (!text && !idName) return;
+      items.push({ id: el.id, name: text || idName, label: text ? '' : idName, kind: 'frameButton' });
+    });
+
+    // Tumbler items (toggle switch segments)
+    [...document.querySelectorAll('[id^="' + p + '"].tumblerItem')].filter(el => el.offsetWidth > 0).forEach(el => {
+      const idName = el.id.replace(p, '');
+      const text = norm(el.innerText);
+      items.push({ id: el.id, name: text || idName, label: idName, kind: 'tumbler' });
     });
 
     // Checkboxes (div.checkbox) — match by label or internal name
