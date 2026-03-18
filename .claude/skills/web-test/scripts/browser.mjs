@@ -4190,7 +4190,19 @@ export async function showTitleSlide(text, opts = {}) {
     background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
     color = '#fff',
     fontSize = 36,
+    speech,
   } = opts;
+
+  // Collect caption for TTS narration if recording
+  let smartWaitMs = 0;
+  if (recorder && speech && speech !== false) {
+    const captionText = typeof speech === 'string' ? speech : text.replace(/\n/g, ' ');
+    if (captionText) {
+      recorder.captions.push({ text: captionText, speech: captionText, time: Math.round(recorder.videoTimeMs) });
+      smartWaitMs = Math.max(2000, captionText.length * 100);
+    }
+  }
+
   await page.evaluate(({ text, subtitle, background, color, fontSize }) => {
     let div = document.getElementById('__web_test_title');
     if (!div) {
@@ -4211,6 +4223,18 @@ export async function showTitleSlide(text, opts = {}) {
     }
     div.innerHTML = `<div style="text-align:center;max-width:70%;color:${color};font-family:'Segoe UI',Arial,sans-serif;">${html}</div>`;
   }, { text, subtitle, background, color, fontSize });
+
+  // Smart TTS wait (same pattern as showCaption/showImage)
+  if (smartWaitMs > 0) {
+    let remaining = smartWaitMs;
+    while (remaining > 0) {
+      const chunk = Math.min(remaining, 1000);
+      await page.waitForTimeout(chunk);
+      remaining -= chunk;
+      if (recorder?._flushFrames) recorder._flushFrames();
+    }
+    recorder.captionCredit = { waitedMs: smartWaitMs, at: Date.now() };
+  }
 }
 
 /** Remove the title slide overlay. */
