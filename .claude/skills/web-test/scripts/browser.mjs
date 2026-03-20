@@ -1259,6 +1259,52 @@ async function fillReferenceField(selector, fieldName, value, formNum) {
   // 0. Dismiss any leftover error modal from a previous operation
   await dismissPendingErrors();
 
+  // 0a. Try DLB (DropListButton) first — works cleanly for combobox/enum fields
+  //     and also for reference fields that show a dropdown.
+  const inputId = selector.match(/\[id="(.+)"\]/)?.[1];
+  // DLB button ID uses field name without _iN suffix (e.g. form1_Field_DLB, not form1_Field_i0_DLB)
+  const dlbId = inputId.replace(/_i\d+$/, '') + '_DLB';
+  const dlbSelector = `[id="${dlbId}"]`;
+  try {
+    const dlbVisible = await page.evaluate(`document.querySelector('${dlbSelector.replace(/'/g, "\\'")}')?.offsetWidth > 0`);
+    if (dlbVisible) {
+      await page.click(dlbSelector);
+      await page.waitForTimeout(1000);
+      const eddState = await page.evaluate(`(() => {
+        const edd = document.getElementById('editDropDown');
+        if (!edd || edd.offsetWidth === 0) return { visible: false };
+        const eddTexts = [...edd.querySelectorAll('.eddText')].filter(el => el.offsetWidth > 0);
+        return {
+          visible: true,
+          items: eddTexts.map(el => {
+            const r = el.getBoundingClientRect();
+            return { name: el.innerText?.trim() || '', x: r.x + r.width / 2, y: r.y + r.height / 2 };
+          })
+        };
+      })()`);
+      if (eddState.visible && eddState.items?.length > 0) {
+        const target = normYo(text.toLowerCase());
+        const candidates = eddState.items.filter(i => !i.name.startsWith('Создать'));
+        let match = candidates.find(i => normYo(i.name.replace(/\s*\([^)]*\)\s*$/, '').toLowerCase()) === target);
+        if (!match) match = candidates.find(i => normYo(i.name.toLowerCase()).includes(target));
+        if (!match) match = candidates.find(i => {
+          const name = normYo(i.name.replace(/\s*\([^)]*\)\s*$/, '').toLowerCase());
+          return name.includes(target) || target.includes(name);
+        });
+        if (match) {
+          await page.mouse.click(match.x, match.y);
+          await waitForStable();
+          await dismissPendingErrors();
+          return { field: fieldName, ok: true, method: 'dropdown',
+            value: match.name.replace(/\s*\([^)]*\)\s*$/, '') };
+        }
+        // No match in DLB dropdown — close and fall through to paste approach
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(300);
+      }
+    }
+  } catch { /* DLB approach failed — fall through to paste */ }
+
   // 1. Focus (handle surface/modal overlay from previous interaction)
   try {
     await page.click(selector);
@@ -1279,6 +1325,7 @@ async function fillReferenceField(selector, fieldName, value, formNum) {
   }
 
   // 2. If field already has a value, clear using Shift+F4 (native 1C mechanism).
+  //    This is needed for reference fields — Shift+F4 properly clears the ref link.
   const currentVal = await page.evaluate(`document.querySelector('${escapedSel}')?.value || ''`);
   if (currentVal) {
     await page.keyboard.press('Shift+F4');
