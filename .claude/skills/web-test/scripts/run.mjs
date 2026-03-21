@@ -145,6 +145,13 @@ async function executeScript(code, { noRecord } = {}) {
         const result = await orig(...args);
         const errors = result?.errors;
         if (errors?.modal || errors?.balloon) {
+          // Screenshot while the error modal is still visible (before fetchErrorStack closes it)
+          let errorShot;
+          try {
+            const png = await exports.screenshot();
+            errorShot = resolve(__dirname, '..', 'error-shot.png');
+            writeFileSync(errorShot, png);
+          } catch {}
           // Try to fetch call stack for modal errors before throwing
           let stack = null;
           if (errors?.modal && typeof exports.fetchErrorStack === 'function') {
@@ -154,7 +161,7 @@ async function executeScript(code, { noRecord } = {}) {
           }
           const msg = errors.modal?.message || errors.balloon?.message || 'Unknown 1C error';
           const err = new Error(msg);
-          err.onecError = { step: name, args, errors, formState: result, stack };
+          err.onecError = { step: name, args, errors, formState: result, stack, screenshot: errorShot };
           throw err;
         }
         return result;
@@ -177,13 +184,15 @@ async function executeScript(code, { noRecord } = {}) {
       try { await browser.stopRecording(); } catch {}
     }
 
-    // Error screenshot
-    let shotFile;
-    try {
-      const png = await browser.screenshot();
-      shotFile = resolve(__dirname, '..', 'error-shot.png');
-      writeFileSync(shotFile, png);
-    } catch {}
+    // Error screenshot (skip if already taken before fetchErrorStack closed the modal)
+    let shotFile = e.onecError?.screenshot;
+    if (!shotFile) {
+      try {
+        const png = await browser.screenshot();
+        shotFile = resolve(__dirname, '..', 'error-shot.png');
+        writeFileSync(shotFile, png);
+      } catch {}
+    }
 
     const result = { ok: false, error: e.message, output: output.join('\n'), screenshot: shotFile, elapsed: elapsed(t0) };
 
