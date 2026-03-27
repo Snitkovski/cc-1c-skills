@@ -236,13 +236,14 @@ await closeForm({ save: false });
 - `_kind: 'group'` — группа в иерархическом списке
 - `_tree: 'expanded'|'collapsed'` — состояние узла дерева
 - `_level: N` — уровень вложенности
+- `_selected: true` — строка выделена (подсвечена). Используйте с `clickElement({ modifier: 'ctrl'|'shift' })` для проверки мультиселекции
 - На объекте результата: `hierarchical: true`, `viewMode: 'tree'`
 
 ### Действия
 
 | Функция | Описание | Возвращает |
 |---------|----------|------------|
-| `clickElement(text, {dblclick?})` | Клик по кнопке/ссылке/строке. `{dblclick: true}` для открытия из списка | form state или `{ submenu }` |
+| `clickElement(text, {dblclick?, modifier?})` | Клик по кнопке/ссылке/строке. `{dblclick: true}` для открытия, `{modifier: 'ctrl'\|'shift'}` для мультиселекции | form state или `{ submenu }` |
 | `fillFields({name: value})` | Заполнить поля (текст, чекбокс, радио, ссылки, DCS-фильтры). Пустое значение (`''`/`null`) = очистка | `{ filled: [{field, ok, method}], form }` |
 | `selectValue(field, search, opts?)` | Выбрать из справочника. search: текст, `{поле: значение}` или `''`/`null` для очистки. `{ type }` для составного типа | form state с `selected` |
 | `fillTableRow(fields, {tab?, add?, row?})` | Заполнить строку. Значение: строка, `{ value, type }` для составного типа, `''`/`null` для очистки | form state |

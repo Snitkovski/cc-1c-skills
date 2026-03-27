@@ -1,4 +1,4 @@
-// web-test browser v1.5 — Playwright browser management for 1C web client
+// web-test browser v1.6 — Playwright browser management for 1C web client
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * Playwright browser management for 1C web client.
@@ -1928,7 +1928,7 @@ export async function fillField(name, value) {
 }
 
 /** Click a button/hyperlink/tab on the current form. Use {dblclick: true} to double-click (open items from lists). */
-export async function clickElement(text, { dblclick, table, toggle, expand, timeout } = {}) {
+export async function clickElement(text, { dblclick, table, toggle, expand, modifier, timeout } = {}) {
   ensureConnected();
   await dismissPendingErrors();
   if (highlightMode) try { await highlight(text, { table }); await page.waitForTimeout(500); await unhighlight(); } catch {}
@@ -2035,6 +2035,19 @@ export async function clickElement(text, { dblclick, table, toggle, expand, time
   }
   if (target?.error) throw new Error(`clickElement: "${text}" not found. Available: ${target.available?.join(', ') || 'none'}`);
 
+  // Helper: click with optional modifier key (Ctrl/Shift for multi-select)
+  const modKey = modifier === 'ctrl' ? 'Control' : modifier === 'shift' ? 'Shift' : null;
+  async function modClick(x, y) {
+    if (modKey) await page.keyboard.down(modKey);
+    await page.mouse.click(x, y);
+    if (modKey) await page.keyboard.up(modKey);
+  }
+  async function modDblClick(x, y) {
+    if (modKey) await page.keyboard.down(modKey);
+    await page.mouse.dblclick(x, y);
+    if (modKey) await page.keyboard.up(modKey);
+  }
+
   // Grid row targets — use coordinate click (single or double)
   if (target.kind === 'gridGroup' || target.kind === 'gridParent') {
     if (expand != null || toggle) {
@@ -2066,23 +2079,23 @@ export async function clickElement(text, { dblclick, table, toggle, expand, time
         || (expand === false && levelIconInfo.isExpanded);
       if (shouldClick) {
         if (levelIconInfo) {
-          await page.mouse.click(levelIconInfo.x, levelIconInfo.y);
+          await modClick(levelIconInfo.x, levelIconInfo.y);
         } else {
           // Fallback: dblclick (standard hierarchy navigation)
-          await page.mouse.dblclick(target.x, target.y);
+          await modDblClick(target.x, target.y);
         }
       }
       await waitForStable(formNum);
       const state = await getFormState();
-      state.clicked = { kind: target.kind, name: target.name, toggled: shouldClick };
+      state.clicked = { kind: target.kind, name: target.name, toggled: shouldClick, ...(modifier ? { modifier } : {}) };
       state.hint = shouldClick ? 'Group toggled. Use readTable to see updated list.' : 'Group already in desired state.';
       return state;
     }
     // Default: dblclick to enter group / go up to parent
-    await page.mouse.dblclick(target.x, target.y);
+    await modDblClick(target.x, target.y);
     await waitForStable(formNum);
     const state = await getFormState();
-    state.clicked = { kind: target.kind, name: target.name };
+    state.clicked = { kind: target.kind, name: target.name, ...(modifier ? { modifier } : {}) };
     return state;
   }
   if (target.kind === 'gridTreeNode') {
@@ -2116,38 +2129,38 @@ export async function clickElement(text, { dblclick, table, toggle, expand, time
         || (expand === false && treeIconInfo.isExpanded);
       if (shouldClick) {
         if (treeIconInfo) {
-          await page.mouse.click(treeIconInfo.x, treeIconInfo.y);
+          await modClick(treeIconInfo.x, treeIconInfo.y);
         } else {
           // Fallback: dblclick on row (works for trees without clickable +/- icons)
-          await page.mouse.dblclick(target.x, target.y);
+          await modDblClick(target.x, target.y);
         }
       }
       await waitForStable(formNum);
       const state = await getFormState();
-      state.clicked = { kind: 'gridTreeNode', name: target.name, toggled: shouldClick };
+      state.clicked = { kind: 'gridTreeNode', name: target.name, toggled: shouldClick, ...(modifier ? { modifier } : {}) };
       state.hint = shouldClick ? 'Tree node toggled. Use readTable to see updated tree.' : 'Tree node already in desired state.';
       return state;
     }
     // Default: select row (click text, no expand/collapse)
-    await page.mouse.click(target.x, target.y);
+    await modClick(target.x, target.y);
     await waitForStable(formNum);
     const state = await getFormState();
-    state.clicked = { kind: 'gridTreeNode', name: target.name };
+    state.clicked = { kind: 'gridTreeNode', name: target.name, ...(modifier ? { modifier } : {}) };
     state.hint = 'Row selected. Use { expand: true } to expand/collapse.';
     return state;
   }
   if (target.kind === 'gridRow') {
     if (dblclick) {
-      await page.mouse.dblclick(target.x, target.y);
+      await modDblClick(target.x, target.y);
       await waitForStable();
       const state = await getFormState();
-      state.clicked = { kind: 'gridRow', name: target.name, dblclick: true };
+      state.clicked = { kind: 'gridRow', name: target.name, dblclick: true, ...(modifier ? { modifier } : {}) };
       return state;
     }
-    await page.mouse.click(target.x, target.y);
+    await modClick(target.x, target.y);
     await waitForStable();
     const state = await getFormState();
-    state.clicked = { kind: 'gridRow', name: target.name };
+    state.clicked = { kind: 'gridRow', name: target.name, ...(modifier ? { modifier } : {}) };
     return state;
   }
 

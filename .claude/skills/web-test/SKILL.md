@@ -171,6 +171,7 @@ Special row fields:
 - `_kind: 'parent'` — parent row in hierarchy
 - `_tree: 'expanded'|'collapsed'` — tree node state
 - `_level: N` — nesting depth in tree view
+- `_selected: true` — row is selected (highlighted). Use with `clickElement({ modifier: 'ctrl'|'shift' })` to verify multi-selection
 - `hierarchical: true` — list has groups (on result object)
 - `viewMode: 'tree'` — tree view active (on result object)
 
@@ -208,7 +209,7 @@ Sections + all open tabs.
 
 ### Actions
 
-#### `clickElement(text, { dblclick?, table?, expand? })` → form state
+#### `clickElement(text, { dblclick?, table?, expand?, modifier? })` → form state
 Click button, hyperlink, tab, navigation panel link, or grid row (fuzzy match).
 
 - `table` — scope button search to a specific grid's command panel (by name from `tables[]`):
@@ -229,6 +230,15 @@ Click button, hyperlink, tab, navigation panel link, or grid row (fuzzy match).
   ```js
   await clickElement('ИСУ ФХД');                      // select row
   await clickElement('ИСУ ФХД', { expand: true });    // expand/collapse
+  ```
+- **Multi-select rows** with `modifier: 'ctrl'` (add to selection) or `modifier: 'shift'` (select range):
+  ```js
+  await clickElement('Номенклатура 1');                          // select first row
+  await clickElement('Номенклатура 2', { modifier: 'ctrl' });   // add to selection
+  await clickElement('Номенклатура 5', { modifier: 'shift' });  // select range 2..5
+  // Verify selection:
+  const t = await readTable();
+  t.rows.filter(r => r._selected);  // rows with _selected: true
   ```
 
 #### `fillFields({ name: value })` → `{ filled, form }`

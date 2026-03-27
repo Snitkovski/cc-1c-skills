@@ -1,4 +1,4 @@
-// web-test dom v1.2 — DOM selectors and semantic mapping for 1C web client
+// web-test dom v1.3 — DOM selectors and semantic mapping for 1C web client
 // Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 /**
  * DOM selectors and semantic mapping for 1C:Enterprise web client.
@@ -583,6 +583,8 @@ export function readTableScript(formNum, { maxRows = 20, offset = 0, gridSelecto
         }
         row._level = imgBox ? imgBox.querySelectorAll('.dIB').length - 1 : 0;
       }
+      // Selection state: selRow = selected row in grid
+      if (line.classList.contains('selRow') || line.classList.contains('select')) row._selected = true;
       rows.push(row);
     }
     const isTree = !!body.querySelector('.gridBoxTree');
