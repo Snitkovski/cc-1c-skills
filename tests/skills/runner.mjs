@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// skill-test-runner v0.2 — Snapshot-based regression tests for 1C skill scripts
-// Usage: node tests/skills/runner.mjs [filter] [--update-snapshots] [--runtime python] [--json report.json]
+// skill-test-runner v0.3 — Snapshot-based regression tests for 1C skill scripts
+// Usage: node tests/skills/runner.mjs [filter] [--update-snapshots] [--runtime python] [--json report.json] [--concurrency N]
 
-import { execFileSync } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync,
          readdirSync, statSync, cpSync, copyFileSync } from 'fs';
 import { join, resolve, dirname, relative, basename, extname } from 'path';
-import { tmpdir } from 'os';
+import { tmpdir, cpus } from 'os';
 
 // ─── Paths ──────────────────────────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ const CACHE     = resolve(ROOT, '.cache');
 // ─── CLI args ───────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { filter: null, updateSnapshots: false, runtime: 'powershell', jsonReport: null, verbose: false };
+  const args = { filter: null, updateSnapshots: false, runtime: 'powershell', jsonReport: null, verbose: false, concurrency: cpus().length };
   const rest = argv.slice(2);
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
@@ -27,6 +27,7 @@ function parseArgs(argv) {
     if (a === '--runtime' && rest[i + 1]) { args.runtime = rest[++i]; continue; }
     if (a === '--json' && rest[i + 1]) { args.jsonReport = rest[++i]; continue; }
     if (a === '--verbose' || a === '-v') { args.verbose = true; continue; }
+    if (a === '--concurrency' && rest[i + 1]) { args.concurrency = parseInt(rest[++i], 10) || 1; continue; }
     if (!a.startsWith('--') && !args.filter) { args.filter = a.replace(/\\/g, '/'); continue; }
   }
   return args;
@@ -151,6 +152,31 @@ function execSkillRaw(runtime, scriptPath, args, cwd) {
     timeout: 60_000,
     stdio: ['pipe', 'pipe', 'pipe'],
     cwd: execCwd,
+  });
+}
+
+function execSkillAsync(runtime, scriptPath, args, cwd) {
+  return new Promise((resolve, reject) => {
+    const execCwd = cwd || REPO_ROOT;
+    const cmd = runtime === 'python'
+      ? [process.env.PYTHON || 'python', [scriptPath, ...args]]
+      : ['powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args]];
+
+    const child = execFile(cmd[0], cmd[1], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      cwd: execCwd,
+    }, (error, stdout, stderr) => {
+      if (error) {
+        const err = new Error(error.message);
+        err.status = error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 1 : (error.code ?? 1);
+        err.stdout = stdout || '';
+        err.stderr = stderr || '';
+        reject(err);
+      } else {
+        resolve(stdout);
+      }
+    });
   });
 }
 
@@ -339,6 +365,119 @@ function updateSnapshot(workDir, snapshotDir, snapshotConfig) {
 
 // ─── Run a single case ──────────────────────────────────────────────────────
 
+async function runCaseAsync(testCase, opts) {
+  const { skillConfig, caseData, snapshotDir } = testCase;
+  const t0 = performance.now();
+  const setupName = caseData.setup || skillConfig.setup || 'none';
+  let workspace = null;
+  let workDir = null;
+  let inputFile = null;
+
+  try {
+    const skillCasesDir = join(CASES, testCase.skillDir);
+    const fixturePath = ensureSetup(setupName, opts.runtime, skillCasesDir);
+    if (fixturePath === SKIP) {
+      return { id: testCase.id, skill: testCase.skillDir, name: testCase.name, passed: true, skipped: true, errors: [], elapsed: '0.0s' };
+    }
+    const isExternal = typeof setupName === 'string' && setupName.startsWith('external:');
+    workspace = createWorkspace(fixturePath, isExternal);
+    workDir = workspace.path;
+
+    // Pre-run steps
+    if (caseData.preRun) {
+      for (const step of caseData.preRun) {
+        const preScript = resolveScript(step.script, opts.runtime);
+        const preArgs = [];
+        for (const [flag, value] of Object.entries(step.args || {})) {
+          preArgs.push(flag);
+          if (value === true || value === '') continue;
+          preArgs.push(String(value).replace('{workDir}', workDir).replace('{inputFile}', ''));
+        }
+        let preInputFile = null;
+        if (step.input) {
+          preInputFile = join(workDir, '__pre_input.json');
+          writeFileSync(preInputFile, JSON.stringify(step.input, null, 2), 'utf8');
+          for (let i = 0; i < preArgs.length; i++) {
+            if (preArgs[i] === '') preArgs[i] = preInputFile;
+          }
+        }
+        try {
+          const preCwd = step.cwd === '{workDir}' ? workDir : undefined;
+          await execSkillAsync(opts.runtime, preScript, preArgs, preCwd);
+        } catch (e) {
+          throw new Error(`preRun step "${step.script}" failed: ${e.stderr || e.message}`);
+        }
+        if (preInputFile && existsSync(preInputFile)) rmSync(preInputFile);
+      }
+    }
+
+    // Write input
+    if (caseData.input !== undefined) {
+      inputFile = join(workDir, '__input.json');
+      writeFileSync(inputFile, JSON.stringify(caseData.input, null, 2), 'utf8');
+    }
+
+    // Execute
+    const { scriptPath, args } = buildArgs(skillConfig, caseData, workDir, inputFile, opts.runtime);
+    let stdout = '', stderr = '', exitCode = 0;
+    try {
+      const execCwd = skillConfig.cwd === 'workDir' ? workDir : undefined;
+      stdout = await execSkillAsync(opts.runtime, scriptPath, args, execCwd);
+    } catch (e) {
+      exitCode = e.status ?? 1;
+      stdout = e.stdout || '';
+      stderr = e.stderr || '';
+    }
+
+    if (inputFile && existsSync(inputFile)) rmSync(inputFile);
+
+    // Assertions
+    const errors = [];
+    if (caseData.expectError) {
+      if (exitCode === 0) errors.push('Expected error (non-zero exit) but got exitCode=0');
+      if (typeof caseData.expectError === 'string' && !stderr.includes(caseData.expectError)) {
+        errors.push(`Expected stderr to contain "${caseData.expectError}", got: ${stderr.substring(0, 200)}`);
+      }
+    } else {
+      if (exitCode !== 0) {
+        errors.push(`exitCode=${exitCode}\nstdout: ${stdout.substring(0, 300)}\nstderr: ${stderr.substring(0, 300)}`);
+      }
+      if (caseData.expect?.files) {
+        for (const f of caseData.expect.files) {
+          if (!existsSync(join(workDir, f))) errors.push(`Expected file not found: ${f}`);
+        }
+      }
+      if (caseData.expect?.stdoutContains) {
+        if (!stdout.includes(caseData.expect.stdoutContains)) {
+          errors.push(`stdout does not contain "${caseData.expect.stdoutContains}"`);
+        }
+      }
+      if (errors.length === 0 && !caseData.expectError && !workspace.readOnly) {
+        const snapshotConfig = skillConfig.snapshot || {};
+        if (opts.updateSnapshots) {
+          updateSnapshot(workDir, snapshotDir, snapshotConfig);
+        } else {
+          const cmp = compareSnapshot(workDir, snapshotDir, snapshotConfig);
+          if (!cmp.match && cmp.diffs) {
+            for (const d of cmp.diffs) {
+              if (d.type === 'missing') errors.push(`Snapshot: file missing — ${d.file}`);
+              else errors.push(`Snapshot: ${d.file}:${d.line} differs\n  expected: ${d.expected}\n  actual:   ${d.actual}`);
+            }
+          }
+        }
+      }
+    }
+
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    return { id: testCase.id, skill: testCase.skillDir, name: testCase.name, passed: errors.length === 0, errors, elapsed: `${elapsed}s`, snapshotUpdated: opts.updateSnapshots && !caseData.expectError && !workspace.readOnly };
+  } catch (e) {
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    return { id: testCase.id, skill: testCase.skillDir, name: testCase.name, passed: false, errors: [`Runner error: ${e.message}`], elapsed: `${elapsed}s` };
+  } finally {
+    if (workspace) cleanupWorkspace(workspace);
+  }
+}
+
 function runCase(testCase, opts) {
   const { skillConfig, caseData, snapshotDir } = testCase;
   const t0 = performance.now();
@@ -458,8 +597,8 @@ function runCase(testCase, opts) {
         }
       }
 
-      // Snapshot comparison
-      if (errors.length === 0 && !caseData.expectError) {
+      // Snapshot comparison (skip for external/read-only workspaces)
+      if (errors.length === 0 && !caseData.expectError && !workspace.readOnly) {
         const snapshotConfig = skillConfig.snapshot || {};
         if (opts.updateSnapshots) {
           updateSnapshot(workDir, snapshotDir, snapshotConfig);
@@ -486,7 +625,7 @@ function runCase(testCase, opts) {
       passed: errors.length === 0,
       errors,
       elapsed: `${elapsed}s`,
-      snapshotUpdated: opts.updateSnapshots && !caseData.expectError,
+      snapshotUpdated: opts.updateSnapshots && !caseData.expectError && !workspace.readOnly,
     };
 
   } catch (e) {
@@ -506,7 +645,7 @@ function runCase(testCase, opts) {
 
 // ─── Reporter ───────────────────────────────────────────────────────────────
 
-function printReport(results, opts) {
+function printReport(results, opts, wallTime) {
   const skipped = results.filter(r => r.skipped);
   const passed = results.filter(r => r.passed && !r.skipped);
   const failed = results.filter(r => !r.passed);
@@ -561,10 +700,11 @@ function printReport(results, opts) {
     }
   }
 
-  const totalTime = results.reduce((s, r) => s + parseFloat(r.elapsed), 0).toFixed(1);
+  const cpuTime = results.reduce((s, r) => s + parseFloat(r.elapsed), 0).toFixed(1);
   console.log('');
   const skippedStr = skipped.length > 0 ? ` | Skipped: ${skipped.length}` : '';
-  console.log(`  Passed: ${passed.length} | Failed: ${failed.length}${skippedStr} | Total: ${results.length} | Time: ${totalTime}s`);
+  const timeStr = wallTime ? `${wallTime}s wall, ${cpuTime}s cpu` : `${cpuTime}s`;
+  console.log(`  Passed: ${passed.length} | Failed: ${failed.length}${skippedStr} | Total: ${results.length} | Time: ${timeStr}`);
   console.log('');
 
   if (opts.jsonReport) {
@@ -589,9 +729,30 @@ function printReport(results, opts) {
   return failed.length === 0;
 }
 
+// ─── Parallel pool ─────────────────────────────────────────────────────────
+
+async function runPool(cases, opts) {
+  const results = new Array(cases.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < cases.length) {
+      const idx = next++;
+      results[idx] = await runCaseAsync(cases[idx], opts);
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < Math.min(opts.concurrency, cases.length); i++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
-function main() {
+async function main() {
   const opts = parseArgs(process.argv);
   const cases = discoverCases(opts.filter);
 
@@ -600,17 +761,35 @@ function main() {
     process.exit(0);
   }
 
-  console.log(`\nRunning ${cases.length} test(s)... [runtime: ${opts.runtime}]`);
+  const parallel = opts.concurrency > 1;
+  const modeStr = parallel ? `${opts.concurrency} workers` : 'sequential';
+  console.log(`\nRunning ${cases.length} test(s)... [runtime: ${opts.runtime}, ${modeStr}]`);
 
   // Ensure cache dir exists
   mkdirSync(CACHE, { recursive: true });
 
-  const results = [];
-  for (const tc of cases) {
-    results.push(runCase(tc, opts));
+  // Pre-warm shared fixtures before parallel run
+  const setups = new Set(cases.map(c => c.caseData.setup || c.skillConfig.setup || 'none'));
+  for (const setup of setups) {
+    if (setup === 'empty-config' || setup === 'base-config') {
+      try { ensureSetup(setup, opts.runtime, CASES); } catch {}
+    }
   }
 
-  const allPassed = printReport(results, opts);
+  const wallStart = performance.now();
+  let results;
+
+  if (parallel) {
+    results = await runPool(cases, opts);
+  } else {
+    results = [];
+    for (const tc of cases) {
+      results.push(await runCaseAsync(tc, opts));
+    }
+  }
+
+  const wallTime = ((performance.now() - wallStart) / 1000).toFixed(1);
+  const allPassed = printReport(results, opts, wallTime);
   process.exit(allPassed ? 0 : 1);
 }
 
