@@ -1,0 +1,7 @@
+{
+  "name": "Пустое расширение",
+  "params": { "name": "МоёРасширение", "outputDir": "ext" },
+  "expect": {
+    "files": ["ext/Configuration.xml"]
+  }
+}

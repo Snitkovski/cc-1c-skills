@@ -1,0 +1,14 @@
+{
+  "script": "cfe-patch-method/scripts/cfe-patch-method",
+  "setup": "empty-config",
+  "args": [
+    { "flag": "-ExtensionPath", "from": "workPath", "field": "extensionPath" },
+    { "flag": "-ModulePath", "from": "case.modulePath" },
+    { "flag": "-MethodName", "from": "case.methodName" },
+    { "flag": "-InterceptorType", "from": "case.interceptorType" }
+  ],
+  "snapshot": {
+    "root": "workDir",
+    "normalizeUuids": true
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "script": "interface-edit/scripts/interface-edit",
+  "setup": "empty-config",
+  "args": [
+    { "flag": "-CIPath", "from": "workPath", "field": "ciPath" },
+    { "flag": "-DefinitionFile", "from": "inputFile" },
+    { "flag": "-CreateIfMissing", "from": "switch" }
+  ],
+  "snapshot": {
+    "root": "workDir",
+    "normalizeUuids": true
+  }
+}

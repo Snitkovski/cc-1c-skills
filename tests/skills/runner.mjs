@@ -343,6 +343,10 @@ function runCase(testCase, opts) {
         const preArgs = [];
         for (const [flag, value] of Object.entries(step.args || {})) {
           preArgs.push(flag);
+          if (value === true || value === '') {
+            // Switch parameter — no value
+            continue;
+          }
           const resolved = String(value)
             .replace('{workDir}', workDir)
             .replace('{inputFile}', '');
