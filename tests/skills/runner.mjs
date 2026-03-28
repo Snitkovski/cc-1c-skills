@@ -20,13 +20,14 @@ const FIXTURES  = resolve(ROOT, 'fixtures');
 // ─── CLI args ───────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const args = { filter: null, updateSnapshots: false, runtime: 'powershell', jsonReport: null };
+  const args = { filter: null, updateSnapshots: false, runtime: 'powershell', jsonReport: null, verbose: false };
   const rest = argv.slice(2);
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--update-snapshots') { args.updateSnapshots = true; continue; }
     if (a === '--runtime' && rest[i + 1]) { args.runtime = rest[++i]; continue; }
     if (a === '--json' && rest[i + 1]) { args.jsonReport = rest[++i]; continue; }
+    if (a === '--verbose' || a === '-v') { args.verbose = true; continue; }
     if (!a.startsWith('--') && !args.filter) { args.filter = a.replace(/\\/g, '/'); continue; }
   }
   return args;
@@ -441,6 +442,7 @@ function runCase(testCase, opts) {
     const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
     return {
       id: testCase.id,
+      skill: testCase.skillDir,
       name: testCase.name,
       passed: errors.length === 0,
       errors,
@@ -452,6 +454,7 @@ function runCase(testCase, opts) {
     const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
     return {
       id: testCase.id,
+      skill: testCase.skillDir,
       name: testCase.name,
       passed: false,
       errors: [`Runner error: ${e.message}`],
@@ -468,15 +471,49 @@ function printReport(results, opts) {
   const passed = results.filter(r => r.passed);
   const failed = results.filter(r => !r.passed);
 
-  console.log('');
+  // Group by skill
+  const bySkill = new Map();
   for (const r of results) {
-    const icon = r.passed ? '\u2713' : '\u2717';
-    const suffix = r.snapshotUpdated ? ' [snapshot updated]' : '';
-    console.log(`  ${icon} ${r.name} (${r.elapsed})${suffix}`);
-    if (!r.passed) {
-      for (const err of r.errors) {
-        for (const line of err.split('\n')) {
-          console.log(`    ${line}`);
+    if (!bySkill.has(r.skill)) bySkill.set(r.skill, []);
+    bySkill.get(r.skill).push(r);
+  }
+
+  console.log('');
+
+  for (const [skill, cases] of bySkill) {
+    const skillPassed = cases.filter(r => r.passed).length;
+    const skillTotal = cases.length;
+    const skillFailed = cases.filter(r => !r.passed);
+    const skillTime = cases.reduce((s, r) => s + parseFloat(r.elapsed), 0).toFixed(1);
+    const allOk = skillFailed.length === 0;
+
+    if (opts.verbose) {
+      // Verbose: show every case
+      console.log(`  ${skill}`);
+      for (const r of cases) {
+        const icon = r.passed ? '\u2713' : '\u2717';
+        const suffix = r.snapshotUpdated ? ' [snapshot updated]' : '';
+        console.log(`    ${icon} ${r.name} (${r.elapsed})${suffix}`);
+        if (!r.passed) {
+          for (const err of r.errors) {
+            for (const line of err.split('\n')) {
+              console.log(`      ${line}`);
+            }
+          }
+        }
+      }
+    } else {
+      // Compact: one line per skill, details only for failures
+      const icon = allOk ? '\u2713' : '\u2717';
+      console.log(`  ${icon} ${skill}  ${skillPassed}/${skillTotal} (${skillTime}s)`);
+      if (!allOk) {
+        for (const r of skillFailed) {
+          console.log(`    \u2717 ${r.name} (${r.elapsed})`);
+          for (const err of r.errors) {
+            for (const line of err.split('\n')) {
+              console.log(`      ${line}`);
+            }
+          }
         }
       }
     }
