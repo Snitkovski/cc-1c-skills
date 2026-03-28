@@ -519,8 +519,9 @@ function printReport(results, opts) {
     }
   }
 
+  const totalTime = results.reduce((s, r) => s + parseFloat(r.elapsed), 0).toFixed(1);
   console.log('');
-  console.log(`  Passed: ${passed.length} | Failed: ${failed.length} | Total: ${results.length}`);
+  console.log(`  Passed: ${passed.length} | Failed: ${failed.length} | Total: ${results.length} | Time: ${totalTime}s`);
   console.log('');
 
   if (opts.jsonReport) {
