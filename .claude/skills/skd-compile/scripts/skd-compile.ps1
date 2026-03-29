@@ -1,4 +1,4 @@
-﻿# skd-compile v1.2 — Compile 1C DCS from JSON
+﻿# skd-compile v1.3 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -724,10 +724,14 @@ function Emit-DataSetLinks {
 	if (-not $def.dataSetLinks) { return }
 	foreach ($link in $def.dataSetLinks) {
 		X "`t<dataSetLink>"
-		X "`t`t<sourceDataSet>$(Esc-Xml "$($link.source)")</sourceDataSet>"
-		X "`t`t<destinationDataSet>$(Esc-Xml "$($link.dest)")</destinationDataSet>"
-		X "`t`t<sourceExpression>$(Esc-Xml "$($link.sourceExpr)")</sourceExpression>"
-		X "`t`t<destinationExpression>$(Esc-Xml "$($link.destExpr)")</destinationExpression>"
+		$srcDS = if ($link.source) { "$($link.source)" } elseif ($link.sourceDataSet) { "$($link.sourceDataSet)" } else { "" }
+		$dstDS = if ($link.dest) { "$($link.dest)" } elseif ($link.destinationDataSet) { "$($link.destinationDataSet)" } else { "" }
+		$srcEx = if ($link.sourceExpr) { "$($link.sourceExpr)" } elseif ($link.sourceExpression) { "$($link.sourceExpression)" } else { "" }
+		$dstEx = if ($link.destExpr) { "$($link.destExpr)" } elseif ($link.destinationExpression) { "$($link.destinationExpression)" } else { "" }
+		X "`t`t<sourceDataSet>$(Esc-Xml $srcDS)</sourceDataSet>"
+		X "`t`t<destinationDataSet>$(Esc-Xml $dstDS)</destinationDataSet>"
+		X "`t`t<sourceExpression>$(Esc-Xml $srcEx)</sourceExpression>"
+		X "`t`t<destinationExpression>$(Esc-Xml $dstEx)</destinationExpression>"
 		if ($link.parameter) {
 			X "`t`t<parameter>$(Esc-Xml "$($link.parameter)")</parameter>"
 		}

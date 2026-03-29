@@ -1,4 +1,4 @@
-﻿# interface-edit v1.0 — Edit 1C CommandInterface.xml
+﻿# interface-edit v1.1 — Edit 1C CommandInterface.xml
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)][string]$CIPath,
@@ -436,7 +436,9 @@ if ($DefinitionFile) {
 
 foreach ($op in $operations) {
 	$opName = if ($op.operation) { "$($op.operation)" } else { "$Operation" }
-	$opValue = if ($op.value) { "$($op.value)" } else { "$Value" }
+	$opValueRaw = if ($op.value) { $op.value } else { "$Value" }
+	# For operations expecting JSON (place, order, etc.): accept object or string
+	$opValue = if ($opValueRaw -is [string]) { $opValueRaw } else { $opValueRaw | ConvertTo-Json -Compress }
 
 	switch ($opName) {
 		"hide"            { Do-Hide (Parse-ValueList $opValue) }

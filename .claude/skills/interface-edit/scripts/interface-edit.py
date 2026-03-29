@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# interface-edit v1.0 — Edit 1C CommandInterface.xml
+# interface-edit v1.1 — Edit 1C CommandInterface.xml
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -276,7 +276,7 @@ def main():
 
     def do_place(json_val):
         nonlocal add_count, modify_count
-        defn = json.loads(json_val)
+        defn = json_val if isinstance(json_val, dict) else json.loads(json_val)
         cmd_name = str(defn["command"])
         group_name = str(defn["group"])
         if not cmd_name or not group_name:
@@ -304,7 +304,7 @@ def main():
 
     def do_order(json_val):
         nonlocal add_count, remove_count
-        defn = json.loads(json_val)
+        defn = json_val if isinstance(json_val, dict) else json.loads(json_val)
         group_name = str(defn["group"])
         commands = [str(c) for c in defn["commands"]]
         if not group_name or not commands:
@@ -338,7 +338,7 @@ def main():
 
     def do_subsystem_order(json_val):
         nonlocal add_count, remove_count
-        parsed = json.loads(json_val)
+        parsed = json_val if isinstance(json_val, list) else json.loads(json_val)
         subsystems = [str(s) for s in parsed]
         if not subsystems:
             print("subsystem-order requires array of subsystem paths", file=sys.stderr)
@@ -363,7 +363,7 @@ def main():
 
     def do_group_order(json_val):
         nonlocal add_count, remove_count
-        parsed = json.loads(json_val)
+        parsed = json_val if isinstance(json_val, list) else json.loads(json_val)
         groups = [str(g) for g in parsed]
         if not groups:
             print("group-order requires array of group names", file=sys.stderr)

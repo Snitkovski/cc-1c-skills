@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.2 — Compile 1C DCS from JSON
+# skd-compile v1.3 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -574,10 +574,14 @@ def emit_data_set_links(lines, defn):
         return
     for link in defn['dataSetLinks']:
         lines.append('\t<dataSetLink>')
-        lines.append(f'\t\t<sourceDataSet>{esc_xml(str(link["source"]))}</sourceDataSet>')
-        lines.append(f'\t\t<destinationDataSet>{esc_xml(str(link["dest"]))}</destinationDataSet>')
-        lines.append(f'\t\t<sourceExpression>{esc_xml(str(link["sourceExpr"]))}</sourceExpression>')
-        lines.append(f'\t\t<destinationExpression>{esc_xml(str(link["destExpr"]))}</destinationExpression>')
+        src_ds = str(link.get('source') or link.get('sourceDataSet') or '')
+        dst_ds = str(link.get('dest') or link.get('destinationDataSet') or '')
+        src_ex = str(link.get('sourceExpr') or link.get('sourceExpression') or '')
+        dst_ex = str(link.get('destExpr') or link.get('destinationExpression') or '')
+        lines.append(f'\t\t<sourceDataSet>{esc_xml(src_ds)}</sourceDataSet>')
+        lines.append(f'\t\t<destinationDataSet>{esc_xml(dst_ds)}</destinationDataSet>')
+        lines.append(f'\t\t<sourceExpression>{esc_xml(src_ex)}</sourceExpression>')
+        lines.append(f'\t\t<destinationExpression>{esc_xml(dst_ex)}</destinationExpression>')
         if link.get('parameter'):
             lines.append(f'\t\t<parameter>{esc_xml(str(link["parameter"]))}</parameter>')
         lines.append('\t</dataSetLink>')
