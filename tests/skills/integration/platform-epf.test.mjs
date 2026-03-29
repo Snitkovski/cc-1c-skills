@@ -7,7 +7,7 @@ export const setup = 'none';
 export const requiresPlatform = true;
 
 export const steps = [
-  // ── 1. Create EPF without forms (avoids ExtendedPresentation issue) ──
+  // ── 1. Create EPF ──
   {
     name: 'epf-init: пустая обработка',
     script: 'epf-init/scripts/init',

@@ -20,11 +20,10 @@ export const steps = [
     args: { '-JsonPath': '{inputFile}', '-OutputDir': '{workDir}/config' },
   },
   {
-    name: 'cf-edit: регистрация + совместимость интерфейса',
+    name: 'cf-edit: регистрация каталога',
     script: 'cf-edit/scripts/cf-edit',
     input: [
       { operation: 'add-childObject', value: 'Catalog.Контрагенты' },
-      { operation: 'modify-property', value: 'InterfaceCompatibilityMode=TaxiEnableVersion8_2' },
     ],
     args: { '-ConfigPath': '{workDir}/config', '-DefinitionFile': '{inputFile}' },
   },

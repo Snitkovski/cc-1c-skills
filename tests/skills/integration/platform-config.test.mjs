@@ -7,7 +7,7 @@ export const setup = 'none';
 export const requiresPlatform = true;
 
 export const steps = [
-  // ── 1. Build minimal config (no forms — avoids ExtendedPresentation issue) ──
+  // ── 1. Build minimal config ──
   {
     name: 'cf-init: пустая конфигурация',
     script: 'cf-init/scripts/cf-init',
