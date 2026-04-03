@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.4 — Compile 1C metadata object from JSON
+# meta-compile v1.5 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -2463,7 +2463,7 @@ ext_dir = os.path.join(obj_sub_dir, 'Ext')
 
 os.makedirs(type_dir, exist_ok=True)
 if obj_type not in types_no_sub_dir:
-    os.makedirs(ext_dir, exist_ok=True)
+    os.makedirs(obj_sub_dir, exist_ok=True)
 
 write_utf8_bom(main_xml_path, metadata_xml)
 
@@ -2478,30 +2478,45 @@ types_with_object_module = [
 types_with_record_set_module = [
     'InformationRegister', 'AccumulationRegister', 'AccountingRegister', 'CalculationRegister',
 ]
-types_with_manager_module = ['Report', 'DataProcessor']
+types_with_manager_module = ['Report', 'DataProcessor', 'Constant', 'Enum']
+types_with_value_manager_module = ['Constant']
 types_with_module = ['CommonModule', 'HTTPService', 'WebService']
+
+def ensure_ext_dir():
+    os.makedirs(ext_dir, exist_ok=True)
 
 if obj_type in types_with_object_module:
     module_path = os.path.join(ext_dir, 'ObjectModule.bsl')
     if not os.path.isfile(module_path):
+        ensure_ext_dir()
         write_utf8_bom(module_path, '')
         modules_created.append(module_path)
 
 if obj_type in types_with_manager_module:
     module_path = os.path.join(ext_dir, 'ManagerModule.bsl')
     if not os.path.isfile(module_path):
+        ensure_ext_dir()
+        write_utf8_bom(module_path, '')
+        modules_created.append(module_path)
+
+if obj_type in types_with_value_manager_module:
+    module_path = os.path.join(ext_dir, 'ValueManagerModule.bsl')
+    if not os.path.isfile(module_path):
+        ensure_ext_dir()
         write_utf8_bom(module_path, '')
         modules_created.append(module_path)
 
 if obj_type in types_with_record_set_module:
     module_path = os.path.join(ext_dir, 'RecordSetModule.bsl')
     if not os.path.isfile(module_path):
+        ensure_ext_dir()
         write_utf8_bom(module_path, '')
         modules_created.append(module_path)
 
 if obj_type in types_with_module:
     module_path = os.path.join(ext_dir, 'Module.bsl')
     if not os.path.isfile(module_path):
+        ensure_ext_dir()
         write_utf8_bom(module_path, '')
         modules_created.append(module_path)
 
@@ -2509,6 +2524,7 @@ if obj_type in types_with_module:
 if obj_type == 'ExchangePlan':
     content_path = os.path.join(ext_dir, 'Content.xml')
     if not os.path.isfile(content_path):
+        ensure_ext_dir()
         content_xml = '<?xml version="1.0" encoding="UTF-8"?>\r\n<ExchangePlanContent xmlns="http://v8.1c.ru/8.3/xcf/extrnprops" xmlns:xr="http://v8.1c.ru/8.3/xcf/readable" version="2.17"/>\r\n'
         write_utf8_bom(content_path, content_xml)
         modules_created.append(content_path)
@@ -2516,6 +2532,7 @@ if obj_type == 'ExchangePlan':
 if obj_type == 'BusinessProcess':
     flowchart_path = os.path.join(ext_dir, 'Flowchart.xml')
     if not os.path.isfile(flowchart_path):
+        ensure_ext_dir()
         flowchart_xml = '<?xml version="1.0" encoding="UTF-8"?>\r\n<Flowchart xmlns="http://v8.1c.ru/8.3/MDClasses" version="2.17"/>\r\n'
         write_utf8_bom(flowchart_path, flowchart_xml)
         modules_created.append(flowchart_path)

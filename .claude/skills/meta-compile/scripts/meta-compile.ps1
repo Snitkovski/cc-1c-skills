@@ -1,4 +1,4 @@
-﻿# meta-compile v1.4 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.5 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -2827,8 +2827,8 @@ if (-not (Test-Path $typeDir)) {
 	New-Item -ItemType Directory -Path $typeDir -Force | Out-Null
 }
 if ($objType -notin $typesNoSubDir) {
-	if (-not (Test-Path $extDir)) {
-		New-Item -ItemType Directory -Path $extDir -Force | Out-Null
+	if (-not (Test-Path $objSubDir)) {
+		New-Item -ItemType Directory -Path $objSubDir -Force | Out-Null
 	}
 }
 
@@ -2838,6 +2838,13 @@ $enc = New-Object System.Text.UTF8Encoding($true)
 # Module files
 $modulesCreated = @()
 
+# Helper: create Ext/ only when needed (avoids empty Ext/ for Constant, Enum, etc.)
+function Ensure-ExtDir {
+	if (-not (Test-Path $extDir)) {
+		New-Item -ItemType Directory -Path $extDir -Force | Out-Null
+	}
+}
+
 # Types with ObjectModule.bsl
 $typesWithObjectModule = @("Catalog","Document","Report","DataProcessor","ExchangePlan",
 	"ChartOfAccounts","ChartOfCharacteristicTypes","ChartOfCalculationTypes",
@@ -2845,13 +2852,16 @@ $typesWithObjectModule = @("Catalog","Document","Report","DataProcessor","Exchan
 # Types with RecordSetModule.bsl
 $typesWithRecordSetModule = @("InformationRegister","AccumulationRegister","AccountingRegister","CalculationRegister")
 # Types with ManagerModule.bsl
-$typesWithManagerModule = @("Report","DataProcessor")
+$typesWithManagerModule = @("Report","DataProcessor","Constant","Enum")
+# Types with ValueManagerModule.bsl
+$typesWithValueManagerModule = @("Constant")
 # Types with Module.bsl (general)
 $typesWithModule = @("CommonModule","HTTPService","WebService")
 
 if ($objType -in $typesWithObjectModule) {
 	$modulePath = Join-Path $extDir "ObjectModule.bsl"
 	if (-not (Test-Path $modulePath)) {
+		Ensure-ExtDir
 		[System.IO.File]::WriteAllText($modulePath, "", $enc)
 		$modulesCreated += $modulePath
 	}
@@ -2859,6 +2869,15 @@ if ($objType -in $typesWithObjectModule) {
 if ($objType -in $typesWithManagerModule) {
 	$modulePath = Join-Path $extDir "ManagerModule.bsl"
 	if (-not (Test-Path $modulePath)) {
+		Ensure-ExtDir
+		[System.IO.File]::WriteAllText($modulePath, "", $enc)
+		$modulesCreated += $modulePath
+	}
+}
+if ($objType -in $typesWithValueManagerModule) {
+	$modulePath = Join-Path $extDir "ValueManagerModule.bsl"
+	if (-not (Test-Path $modulePath)) {
+		Ensure-ExtDir
 		[System.IO.File]::WriteAllText($modulePath, "", $enc)
 		$modulesCreated += $modulePath
 	}
@@ -2866,6 +2885,7 @@ if ($objType -in $typesWithManagerModule) {
 if ($objType -in $typesWithRecordSetModule) {
 	$modulePath = Join-Path $extDir "RecordSetModule.bsl"
 	if (-not (Test-Path $modulePath)) {
+		Ensure-ExtDir
 		[System.IO.File]::WriteAllText($modulePath, "", $enc)
 		$modulesCreated += $modulePath
 	}
@@ -2873,6 +2893,7 @@ if ($objType -in $typesWithRecordSetModule) {
 if ($objType -in $typesWithModule) {
 	$modulePath = Join-Path $extDir "Module.bsl"
 	if (-not (Test-Path $modulePath)) {
+		Ensure-ExtDir
 		[System.IO.File]::WriteAllText($modulePath, "", $enc)
 		$modulesCreated += $modulePath
 	}
@@ -2882,6 +2903,7 @@ if ($objType -in $typesWithModule) {
 if ($objType -eq "ExchangePlan") {
 	$contentPath = Join-Path $extDir "Content.xml"
 	if (-not (Test-Path $contentPath)) {
+		Ensure-ExtDir
 		$contentXml = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`r`n<ExchangePlanContent xmlns=`"http://v8.1c.ru/8.3/xcf/extrnprops`" xmlns:xr=`"http://v8.1c.ru/8.3/xcf/readable`" version=`"2.17`"/>`r`n"
 		[System.IO.File]::WriteAllText($contentPath, $contentXml, $enc)
 		$modulesCreated += $contentPath
@@ -2890,6 +2912,7 @@ if ($objType -eq "ExchangePlan") {
 if ($objType -eq "BusinessProcess") {
 	$flowchartPath = Join-Path $extDir "Flowchart.xml"
 	if (-not (Test-Path $flowchartPath)) {
+		Ensure-ExtDir
 		$flowchartXml = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`r`n<Flowchart xmlns=`"http://v8.1c.ru/8.3/MDClasses`" version=`"2.17`"/>`r`n"
 		[System.IO.File]::WriteAllText($flowchartPath, $flowchartXml, $enc)
 		$modulesCreated += $flowchartPath
