@@ -1185,9 +1185,10 @@ async function clickSpreadsheetCell(target, { dblclick: dbl, modifier } = {}) {
 
   // Get bounding box and click via page.mouse (bypasses mxlCurrBody overlay)
   const frame = page.frames()[frameIndex];
-  const cellLoc = frame.locator(`div[x="${physCol}"]`).filter({ has: frame.locator(`xpath=ancestor::div[@y="${physRow}" or contains(@class,"R${physRow}")]`) });
-  // Simpler: find by CSS class RxCy
   const cellDiv = frame.locator(`div.R${physRow}C${physCol}`).first();
+  // Scroll cell into view — pure DOM call, not blocked by mxlCurrBody overlay
+  await frame.evaluate(`document.querySelector('div.R${physRow}C${physCol}')?.scrollIntoView({ block: 'center', inline: 'center' })`);
+  await page.waitForTimeout(200);
   const box = await cellDiv.boundingBox();
   if (!box) throw new Error(`clickElement: cell R${physRow}C${physCol} not visible (no bounding box).`);
 
@@ -1235,6 +1236,9 @@ async function findSpreadsheetCellByText(formNum, searchText) {
   if (!frameIndex) return null;
 
   const frame = page.frames()[frameIndex];
+  // Scroll cell into view before measuring
+  await frame.evaluate(`document.querySelector('div.R${found.cell.r}C${found.cell.c}')?.scrollIntoView({ block: 'center', inline: 'center' })`);
+  await page.waitForTimeout(200);
   const cellDiv = frame.locator(`div.R${found.cell.r}C${found.cell.c}`).first();
   const box = await cellDiv.boundingBox();
   if (!box) return null;
