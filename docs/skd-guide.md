@@ -98,7 +98,9 @@
 - **filter shorthand**: `"Поле оператор значение @флаги"` — флаги `@off`, `@user`, `@quickAccess`, `@normal`, `@inaccessible`
 - **dataParameters shorthand**: `"Имя = значение @флаги"`, или `"auto"` — автогенерация для всех не-hidden параметров
 - **structure shorthand**: `"Поле1 > Поле2 > details"` — `>` разделяет уровни группировки
-- **conditionalAppearance**: условное оформление с автоопределением типов значений (Color, Boolean, LocalStringType)
+- **conditionalAppearance**: условное оформление с автоопределением типов (Color, Boolean, LocalStringType для Формат/Текст/Заголовок, DesignTimeValue для ссылок), OrGroup через `{"group": "Or", "items": [...]}`
+- **selection**: поддержка `{"folder": "Название", "items": [...]}` для группировки полей (SelectedItemFolder)
+- **parameters**: `availableValues`, `denyIncompleteValues`, `use: "Always"` в объектной форме
 
 ### Шаблоны вывода — компактный DSL
 

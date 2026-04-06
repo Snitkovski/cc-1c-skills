@@ -378,6 +378,27 @@ XML-маппинг — по `<group>` на каждый элемент:
 | `hidden` | `true` — скрытый параметр (авто `availableAsField=false`, исключение из `dataParameters: auto`) |
 | `useRestriction` | `true` — скрыть от пользователя |
 | `use` | `"Always"`, `"Auto"` |
+| `denyIncompleteValues` | `true` — запретить произвольные значения (только из availableValues) |
+| `availableValues` | Массив `[{value, presentation}]` — допустимые значения с представлениями |
+
+### availableValues
+
+Список допустимых значений параметра. Тип значения определяется автоматически (`Перечисление.*`, `Справочник.*` и др. → `dcscor:DesignTimeValue`):
+
+```json
+{
+  "name": "ПорядокОкругления",
+  "type": "EnumRef.Округления",
+  "value": "Перечисление.Округления.Окр1_00",
+  "use": "Always",
+  "denyIncompleteValues": true,
+  "availableValues": [
+    {"value": "Перечисление.Округления.Окр1_00", "presentation": "руб. коп"},
+    {"value": "Перечисление.Округления.Окр1", "presentation": "руб."},
+    {"value": "Перечисление.Округления.Окр1000", "presentation": "тыс. руб"}
+  ]
+}
+```
 
 ### Значения параметров по типу
 
@@ -481,6 +502,16 @@ XML-маппинг — по `<group>` на каждый элемент:
 - Строка → `SelectedItemField`
 - `"Auto"` → `SelectedItemAuto` (только на уровне группировок; на верхнем уровне settings игнорируется)
 - Объект с `field`/`title` → `SelectedItemField` с `lwsTitle`
+- Объект с `folder`/`items` → `SelectedItemFolder` — группа полей с заголовком и `placement=Auto`:
+
+```json
+"selection": [
+  "Auto",
+  "Счет",
+  {"folder": "Поступление", "items": ["ПолеА", "ПолеБ", "ПолеВ"]},
+  {"folder": "Выбытие", "items": ["ВыбытиеРеализовано", "ВыбытиеПрочее"]}
+]
+```
 
 ### filter
 
@@ -503,7 +534,8 @@ XML-маппинг — по `<group>` на каждый элемент:
 - `@quickAccess` → `viewMode=QuickAccess`
 - `@normal` → `viewMode=Normal`
 - `@inaccessible` → `viewMode=Inaccessible`
-- Типы значений автоопределяются: `true`/`false` → boolean, `2024-01-01T00:00:00` → dateTime, числа → decimal, прочее → string
+- Типы значений автоопределяются: `true`/`false` → boolean, `2024-01-01T00:00:00` → dateTime, числа → decimal, `Перечисление.*`/`Справочник.*`/`ПланСчетов.*`/`Документ.*` → DesignTimeValue, прочее → string
+- OrGroup: `{"group": "Or", "items": ["условие1", "условие2"]}` — объединяет условия через ИЛИ
 
 #### Объектная форма
 
@@ -597,7 +629,7 @@ XML-маппинг — по `<group>` на каждый элемент:
 **Типы значений appearance** определяются автоматически:
 - `style:XXX`, `web:XXX`, `win:XXX` → `v8ui:Color`
 - `true`/`false` → `xs:boolean`
-- Параметр `Текст` или `Заголовок` → `v8:LocalStringType`
+- Параметр `Формат`, `Текст` или `Заголовок` → `v8:LocalStringType`
 - Прочее → `xs:string`
 
 Поддержка `use=false` на уровне параметра:
