@@ -1366,7 +1366,12 @@ export async function readSpreadsheet() {
 
   const { allCells } = await scanSpreadsheetCells(formNum);
 
-  if (allCells.size === 0) throw new Error('readSpreadsheet: no SpreadsheetDocument found. Report may not be generated yet.');
+  if (allCells.size === 0) {
+    // Check for state window messages (info bar) that explain why the report is empty
+    const err = await checkForErrors();
+    const hint = err?.stateText?.length ? err.stateText.join('; ') : '';
+    throw new Error('readSpreadsheet: no SpreadsheetDocument found.' + (hint ? ' State: ' + hint : ' Report may not be generated yet.'));
+  }
 
   const mapping = buildSpreadsheetMapping(allCells);
   if (!mapping) {
