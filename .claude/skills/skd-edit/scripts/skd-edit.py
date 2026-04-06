@@ -1594,13 +1594,38 @@ elif operation == "add-selection":
     var_name = get_variant_name()
     for val in values:
         field_name = val.strip()
-        selection = ensure_settings_child(settings, "selection", [])
+        group_name = None
+
+        # Extract @group=Name
+        gm = re.search(r'\s*@group=(\S+)', field_name)
+        if gm:
+            group_name = gm.group(1)
+            field_name = re.sub(r'\s*@group=\S+', '', field_name).strip()
+
+        if group_name:
+            # Find named StructureItemGroup
+            target_el = None
+            for item in settings.iter(f"{{{SET_NS}}}item"):
+                xsi_type = item.get(f"{{{XSI_NS}}}type", "")
+                if "StructureItemGroup" in xsi_type:
+                    name_el = item.find(f"{{{SET_NS}}}name")
+                    if name_el is not None and name_el.text == group_name:
+                        target_el = item
+                        break
+            if target_el is None:
+                print(f'[WARN] StructureItemGroup "{group_name}" not found -- adding to variant level')
+                target_el = settings
+        else:
+            target_el = settings
+
+        selection = ensure_settings_child(target_el, "selection", [])
         sel_indent = get_container_child_indent(selection)
         sel_xml = build_selection_item_fragment(field_name, sel_indent)
         sel_nodes = import_fragment(xml_doc, sel_xml)
         for node in sel_nodes:
             insert_before_element(selection, node, None, sel_indent)
-        print(f'[OK] Selection "{field_name}" added to variant "{var_name}"')
+        target = f'group "{group_name}"' if group_name else f'variant "{var_name}"'
+        print(f'[OK] Selection "{field_name}" added to {target}')
 
 elif operation == "set-query":
     ds_node = resolve_data_set()

@@ -1882,8 +1882,31 @@ switch ($Operation) {
 
 		foreach ($val in $values) {
 			$fieldName = $val.Trim()
+			$groupName = $null
 
-			$selection = Ensure-SettingsChild $settings "selection" @()
+			# Extract @group=Name
+			if ($fieldName -match '\s*@group=(\S+)') {
+				$groupName = $Matches[1]
+				$fieldName = ($fieldName -replace '\s*@group=\S+', '').Trim()
+			}
+
+			if ($groupName) {
+				# Find named StructureItemGroup
+				$dcssetNs = "http://v8.1c.ru/8.1/data-composition-system/settings"
+				$nsMgr = New-Object System.Xml.XmlNamespaceManager($xmlDoc.NameTable)
+				$nsMgr.AddNamespace("dcsset", $dcssetNs)
+				$groupEl = $settings.SelectSingleNode(".//dcsset:item[@xsi:type='dcsset:StructureItemGroup'][dcsset:name='$groupName']", $nsMgr)
+				if (-not $groupEl) {
+					Write-Host "[WARN] StructureItemGroup `"$groupName`" not found — adding to variant level"
+					$targetEl = $settings
+				} else {
+					$targetEl = $groupEl
+				}
+			} else {
+				$targetEl = $settings
+			}
+
+			$selection = Ensure-SettingsChild $targetEl "selection" @()
 			$selIndent = Get-ContainerChildIndent $selection
 
 			$selXml = Build-SelectionItemFragment -fieldName $fieldName -indent $selIndent
@@ -1892,7 +1915,8 @@ switch ($Operation) {
 				Insert-BeforeElement $selection $node $null $selIndent
 			}
 
-			Write-Host "[OK] Selection `"$fieldName`" added to variant `"$varName`""
+			$target = if ($groupName) { "group `"$groupName`"" } else { "variant `"$varName`"" }
+			Write-Host "[OK] Selection `"$fieldName`" added to $target"
 		}
 	}
 
