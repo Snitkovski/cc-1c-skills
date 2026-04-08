@@ -1001,7 +1001,7 @@ async function scanSpreadsheetCells(formNum) {
         const cells = [];
         document.querySelectorAll('div[x]').forEach(d => {
           const span = d.querySelector('span');
-          const text = span?.textContent?.trim() || '';
+          const text = span?.innerText?.replace(/\\n/g, ' ')?.trim() || '';
           if (!text) return;
           const rowDiv = d.parentElement;
           const row = rowDiv?.getAttribute('y') || rowDiv?.className?.match(/R(\\d+)/)?.[1] || null;
@@ -1044,13 +1044,24 @@ function buildSpreadsheetMapping(allCells) {
     return arr;
   });
 
-  const hasNumber = (row) => row.some(c => /^[\d\s\u00a0]/.test(c) && /\d/.test(c));
+  // Strict numeric value check: digits with optional spaces/commas, excludes codes like "68/78"
+  const isNumericVal = (c) => {
+    if (!c || !/\d/.test(c)) return false;
+    const s = c.replace(/^[-\s\u00a0]+/, '').replace(/[\s\u00a0]/g, '');
+    return /^\d[\d,]*$/.test(s);
+  };
+  const hasNumber = (row) => row.some(c => isNumericVal(c));
   const nonEmpty = (row) => row.filter(c => c !== '').length;
 
-  // Find first data row (first row with numbers)
+  // Find first data row: prefer row with >=2 numeric cells, fallback to >=1
   let firstDataIdx = rows.length;
   for (let i = 0; i < rows.length; i++) {
-    if (hasNumber(rows[i])) { firstDataIdx = i; break; }
+    if (rows[i].filter(c => isNumericVal(c)).length >= 2) { firstDataIdx = i; break; }
+  }
+  if (firstDataIdx === rows.length) {
+    for (let i = 0; i < rows.length; i++) {
+      if (hasNumber(rows[i])) { firstDataIdx = i; break; }
+    }
   }
 
   // Find header rows
@@ -1093,17 +1104,24 @@ function buildSpreadsheetMapping(allCells) {
     if (n) detailCounts[n] = (detailCounts[n] || 0) + 1;
   }
 
+  // Detect DCS column codes (К1, К2, ...) — always prefix with group when present
+  const detailNonEmpty = detailRow.filter(c => c);
+  const isDcsCodeRow = detailNonEmpty.length >= 2 && detailNonEmpty.every(c => /^К\d+$/.test(c));
+
   const colNames = [];
   for (let c = 0; c <= maxCol; c++) {
     const detail = detailRow[c];
     const group = groupFilled[c];
+    const sup = superRow ? superRow[c] : '';
     if (detail) {
-      const needPrefix = group && group !== detail && (detailCounts[detail] > 1 || (groupRow && groupRow[c] === ''));
-      colNames.push(needPrefix ? `${group} / ${detail}` : detail);
+      // Prefer group prefix; fall back to superRow for DCS code columns without sub-group
+      const prefix = group && group !== detail ? group : (isDcsCodeRow && sup ? sup : '');
+      const needPrefix = prefix && (isDcsCodeRow || detailCounts[detail] > 1 || (groupRow && groupRow[c] === ''));
+      colNames.push(needPrefix ? `${prefix} / ${detail}` : detail);
     } else if (group) {
       colNames.push(group);
-    } else if (superRow && superRow[c]) {
-      colNames.push(superRow[c]);
+    } else if (sup) {
+      colNames.push(sup);
     } else {
       colNames.push(null);
     }
@@ -1128,9 +1146,11 @@ function buildSpreadsheetMapping(allCells) {
     }
   }
 
+  const superRowIdx = superRow ? groupIdx - 1 : -1;
+
   return {
     rows, sortedRows, maxCol, colNames, colMap,
-    headerRowIdx: detailIdx, groupRowIdx: groupIdx,
+    headerRowIdx: detailIdx, groupRowIdx: groupIdx, superRowIdx,
     dataStartIdx: firstDataIdx, dataRowIndices, totalsRowIdx,
     rowMap, hasNumber, nonEmpty,
   };
@@ -1244,11 +1264,14 @@ async function clickSpreadsheetCell(target, { dblclick: dbl, modifier } = {}) {
 
   const { rows, sortedRows, colNames, colMap, dataRowIndices, totalsRowIdx } = mapping;
 
-  // Resolve column
-  const colName = target.column;
+  // Resolve column (exact → endsWith " / X" → includes)
+  let colName = target.column;
   if (!colMap.has(colName)) {
     const available = colNames.filter(n => n);
-    throw new Error(`clickElement: column "${colName}" not found. Available: ${available.join(', ')}`);
+    const suffix = ' / ' + colName;
+    const match = available.find(n => n.endsWith(suffix)) || available.find(n => n.includes(colName));
+    if (!match) throw new Error(`clickElement: column "${colName}" not found. Available: ${available.join(', ')}`);
+    colName = match;
   }
   const physCol = colMap.get(colName);
 
@@ -1265,9 +1288,16 @@ async function clickSpreadsheetCell(target, { dblclick: dbl, modifier } = {}) {
     // Filter: { colName: value } — find first data row where column matches
     const filterEntries = Object.entries(row);
     const norm = s => s?.replace(/\u00a0/g, ' ').trim().toLowerCase() || '';
+    const resolveCol = (name) => {
+      if (colMap.has(name)) return colMap.get(name);
+      const suffix = ' / ' + name;
+      const available = colNames.filter(n => n);
+      const m = available.find(n => n.endsWith(suffix)) || available.find(n => n.includes(name));
+      return m ? colMap.get(m) : null;
+    };
     rowIdx = dataRowIndices.find(i => {
       return filterEntries.every(([fCol, fVal]) => {
-        const fColIdx = colMap.get(fCol);
+        const fColIdx = resolveCol(fCol);
         if (fColIdx == null) return false;
         const cellText = norm(rows[i][fColIdx]);
         const search = norm(fVal);
@@ -1393,7 +1423,7 @@ export async function readSpreadsheet() {
     return { rows, total: rows.length };
   }
 
-  const { rows, colNames, dataStartIdx, maxCol, groupRowIdx, headerRowIdx, hasNumber, nonEmpty } = mapping;
+  const { rows, colNames, dataStartIdx, maxCol, groupRowIdx, headerRowIdx, superRowIdx, hasNumber, nonEmpty } = mapping;
 
   // Convert data rows to objects
   const data = [];
@@ -1416,8 +1446,8 @@ export async function readSpreadsheet() {
     }
   }
 
-  // Meta: title, params, filters from rows before header
-  const metaEnd = groupRowIdx >= 0 ? groupRowIdx : headerRowIdx;
+  // Meta: title, params, filters from rows before header (superRow is part of header, not meta)
+  const metaEnd = superRowIdx >= 0 ? superRowIdx : (groupRowIdx >= 0 ? groupRowIdx : headerRowIdx);
   let title = '';
   const meta = [];
   for (let i = 0; i < metaEnd; i++) {
