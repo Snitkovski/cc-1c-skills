@@ -1,4 +1,4 @@
-# skd-edit v1.8 — Atomic 1C DCS editor (Python port)
+# skd-edit v1.9 — Atomic 1C DCS editor (Python port)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import os
@@ -1642,6 +1642,21 @@ elif operation == "add-selection":
             target_el = settings
 
         selection = ensure_settings_child(target_el, "selection", [])
+
+        # Dedup: skip if SelectedItemAuto already exists
+        if field_name == "Auto":
+            is_dup = False
+            for ch in selection:
+                if isinstance(ch.tag, str) and local_name(ch) == "item":
+                    type_attr = ch.get(XSI_TYPE, "")
+                    if "SelectedItemAuto" in type_attr:
+                        is_dup = True
+                        break
+            if is_dup:
+                target = f'group "{group_name}"' if group_name else f'variant "{var_name}"'
+                print(f'[WARN] SelectedItemAuto already exists in {target} -- skipped')
+                continue
+
         sel_indent = get_container_child_indent(selection)
         sel_xml = build_selection_item_fragment(field_name, sel_indent)
         sel_nodes = import_fragment(xml_doc, sel_xml)

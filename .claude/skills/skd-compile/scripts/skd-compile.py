@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.9 — Compile 1C DCS from JSON
+# skd-compile v1.10 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -640,16 +640,24 @@ def emit_calc_fields(lines, defn):
                 lines.append('\t\t<valueType>')
                 emit_value_type(lines, cf_type, '\t\t\t')
                 lines.append('\t\t</valueType>')
-            if cf.get('restrict'):
-                restrict_map = {
-                    'noField': 'field', 'noFilter': 'condition', 'noCondition': 'condition',
-                    'noGroup': 'group', 'noOrder': 'order',
-                }
+            restrict_val = cf.get('restrict') or cf.get('useRestriction')
+            if restrict_val:
                 lines.append('\t\t<useRestriction>')
-                for r in cf['restrict']:
-                    xml_name = restrict_map.get(str(r))
-                    if xml_name:
-                        lines.append(f'\t\t\t<{xml_name}>true</{xml_name}>')
+                if isinstance(restrict_val, dict):
+                    # Object form: { "field": true, "condition": true, ... }
+                    for xml_name, flag in restrict_val.items():
+                        if flag:
+                            lines.append(f'\t\t\t<{esc_xml(str(xml_name))}>true</{esc_xml(str(xml_name))}>')
+                else:
+                    # Array form: ["noField", "noFilter", ...]
+                    restrict_map = {
+                        'noField': 'field', 'noFilter': 'condition', 'noCondition': 'condition',
+                        'noGroup': 'group', 'noOrder': 'order',
+                    }
+                    for r in restrict_val:
+                        xml_name = restrict_map.get(str(r))
+                        if xml_name:
+                            lines.append(f'\t\t\t<{xml_name}>true</{xml_name}>')
                 lines.append('\t\t</useRestriction>')
             if cf.get('appearance'):
                 lines.append('\t\t<appearance>')
@@ -1219,6 +1227,19 @@ def emit_filter_item(lines, item, indent):
         lines.append(f'{indent}\t<dcsset:groupType>{group_type}</dcsset:groupType>')
         if item.get('items'):
             for sub in item['items']:
+                if isinstance(sub, str):
+                    parsed = parse_filter_shorthand(sub)
+                    sub = {'field': parsed['field'], 'op': parsed['op']}
+                    if parsed['use'] is False:
+                        sub['use'] = False
+                    if parsed.get('value') is not None:
+                        sub['value'] = parsed['value']
+                    if parsed.get('valueType'):
+                        sub['valueType'] = parsed['valueType']
+                    if parsed.get('userSettingID'):
+                        sub['userSettingID'] = parsed['userSettingID']
+                    if parsed.get('viewMode'):
+                        sub['viewMode'] = parsed['viewMode']
                 emit_filter_item(lines, sub, f'{indent}\t')
         lines.append(f'{indent}</dcsset:item>')
         return
@@ -1551,7 +1572,7 @@ def parse_structure_shorthand(s):
 
 
 def emit_structure_item(lines, item, indent):
-    item_type = str(item.get('type', ''))
+    item_type = str(item.get('type', 'group'))
 
     if item_type == 'group':
         lines.append(f'{indent}<dcsset:item xsi:type="dcsset:StructureItemGroup">')
@@ -1559,7 +1580,7 @@ def emit_structure_item(lines, item, indent):
         if item.get('name'):
             lines.append(f'{indent}\t<dcsset:name>{esc_xml(str(item["name"]))}</dcsset:name>')
 
-        emit_group_items(lines, item.get('groupBy'), f'{indent}\t')
+        emit_group_items(lines, item.get('groupBy') or item.get('groupFields'), f'{indent}\t')
 
         # Default order to ["Auto"] if not specified
         order_items = item.get('order') or ['Auto']
@@ -1591,7 +1612,7 @@ def emit_structure_item(lines, item, indent):
         if item.get('columns'):
             for col in item['columns']:
                 lines.append(f'{indent}\t<dcsset:column>')
-                emit_group_items(lines, col.get('groupBy'), f'{indent}\t\t')
+                emit_group_items(lines, col.get('groupBy') or col.get('groupFields'), f'{indent}\t\t')
                 col_order = col.get('order') or ['Auto']
                 emit_order(lines, col_order, f'{indent}\t\t')
                 col_sel = col.get('selection') or ['Auto']
@@ -1604,7 +1625,7 @@ def emit_structure_item(lines, item, indent):
                 lines.append(f'{indent}\t<dcsset:row>')
                 if row.get('name'):
                     lines.append(f'{indent}\t\t<dcsset:name>{esc_xml(str(row["name"]))}</dcsset:name>')
-                emit_group_items(lines, row.get('groupBy'), f'{indent}\t\t')
+                emit_group_items(lines, row.get('groupBy') or row.get('groupFields'), f'{indent}\t\t')
                 row_order = row.get('order') or ['Auto']
                 emit_order(lines, row_order, f'{indent}\t\t')
                 row_sel = row.get('selection') or ['Auto']
@@ -1622,7 +1643,7 @@ def emit_structure_item(lines, item, indent):
         # Points
         if item.get('points'):
             lines.append(f'{indent}\t<dcsset:point>')
-            emit_group_items(lines, item['points'].get('groupBy'), f'{indent}\t\t')
+            emit_group_items(lines, item['points'].get('groupBy') or item['points'].get('groupFields'), f'{indent}\t\t')
             pt_order = item['points'].get('order') or ['Auto']
             emit_order(lines, pt_order, f'{indent}\t\t')
             pt_sel = item['points'].get('selection') or ['Auto']
@@ -1632,7 +1653,7 @@ def emit_structure_item(lines, item, indent):
         # Series
         if item.get('series'):
             lines.append(f'{indent}\t<dcsset:series>')
-            emit_group_items(lines, item['series'].get('groupBy'), f'{indent}\t\t')
+            emit_group_items(lines, item['series'].get('groupBy') or item['series'].get('groupFields'), f'{indent}\t\t')
             sr_order = item['series'].get('order') or ['Auto']
             emit_order(lines, sr_order, f'{indent}\t\t')
             sr_sel = item['series'].get('selection') or ['Auto']

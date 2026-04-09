@@ -1,4 +1,4 @@
-﻿# skd-compile v1.9 — Compile 1C DCS from JSON
+﻿# skd-compile v1.10 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -790,15 +790,26 @@ function Emit-CalcFields {
 				Emit-ValueType -typeStr $cfType -indent "`t`t`t"
 				X "`t`t</valueType>"
 			}
-			if ($cf.restrict) {
-				$restrictMap = @{
-					"noField" = "field"; "noFilter" = "condition"; "noCondition" = "condition"
-					"noGroup" = "group"; "noOrder" = "order"
-				}
+			$restrictVal = if ($cf.restrict) { $cf.restrict } elseif ($cf.useRestriction) { $cf.useRestriction } else { $null }
+			if ($restrictVal) {
 				X "`t`t<useRestriction>"
-				foreach ($r in $cf.restrict) {
-					$xmlName = $restrictMap["$r"]
-					if ($xmlName) { X "`t`t`t<$xmlName>true</$xmlName>" }
+				if ($restrictVal -is [System.Management.Automation.PSCustomObject] -or $restrictVal -is [hashtable]) {
+					# Object form: { "field": true, "condition": true, ... }
+					foreach ($prop in $restrictVal.PSObject.Properties) {
+						if ($prop.Value -eq $true) {
+							X "`t`t`t<$($prop.Name)>true</$($prop.Name)>"
+						}
+					}
+				} else {
+					# Array form: ["noField", "noFilter", ...]
+					$restrictMap = @{
+						"noField" = "field"; "noFilter" = "condition"; "noCondition" = "condition"
+						"noGroup" = "group"; "noOrder" = "order"
+					}
+					foreach ($r in $restrictVal) {
+						$xmlName = $restrictMap["$r"]
+						if ($xmlName) { X "`t`t`t<$xmlName>true</$xmlName>" }
+					}
 				}
 				X "`t`t</useRestriction>"
 			}
@@ -1443,6 +1454,16 @@ function Emit-FilterItem {
 		X "$indent`t<dcsset:groupType>$groupType</dcsset:groupType>"
 		if ($item.items) {
 			foreach ($sub in $item.items) {
+				if ($sub -is [string]) {
+					$parsed = Parse-FilterShorthand $sub
+					$obj = @{ field = $parsed.field; op = $parsed.op }
+					if ($parsed.use -eq $false) { $obj.use = $false }
+					if ($null -ne $parsed.value) { $obj.value = $parsed.value }
+					if ($parsed["valueType"]) { $obj.valueType = $parsed["valueType"] }
+					if ($parsed.userSettingID) { $obj.userSettingID = $parsed.userSettingID }
+					if ($parsed.viewMode) { $obj.viewMode = $parsed.viewMode }
+					$sub = [pscustomobject]$obj
+				}
 				Emit-FilterItem -item $sub -indent "$indent`t"
 			}
 		}
@@ -1844,7 +1865,7 @@ function Parse-StructureShorthand {
 function Emit-StructureItem {
 	param($item, [string]$indent)
 
-	$type = "$($item.type)"
+	$type = if ($item.type) { "$($item.type)" } else { "group" }
 
 	if ($type -eq "group") {
 		X "$indent<dcsset:item xsi:type=`"dcsset:StructureItemGroup`">"
@@ -1853,7 +1874,8 @@ function Emit-StructureItem {
 			X "$indent`t<dcsset:name>$(Esc-Xml "$($item.name)")</dcsset:name>"
 		}
 
-		Emit-GroupItems -groupBy $item.groupBy -indent "$indent`t"
+		$gb = if ($item.groupBy) { $item.groupBy } else { $item.groupFields }
+		Emit-GroupItems -groupBy $gb -indent "$indent`t"
 
 		# Default order to ["Auto"] if not specified
 		$orderItems = $item.order
@@ -1891,7 +1913,8 @@ function Emit-StructureItem {
 		if ($item.columns) {
 			foreach ($col in $item.columns) {
 				X "$indent`t<dcsset:column>"
-				Emit-GroupItems -groupBy $col.groupBy -indent "$indent`t`t"
+				$colGb = if ($col.groupBy) { $col.groupBy } else { $col.groupFields }
+				Emit-GroupItems -groupBy $colGb -indent "$indent`t`t"
 				$colOrder = $col.order; if (-not $colOrder) { $colOrder = @("Auto") }
 				Emit-Order -items $colOrder -indent "$indent`t`t"
 				$colSel = $col.selection; if (-not $colSel) { $colSel = @("Auto") }
@@ -1907,7 +1930,8 @@ function Emit-StructureItem {
 				if ($row.name) {
 					X "$indent`t`t<dcsset:name>$(Esc-Xml "$($row.name)")</dcsset:name>"
 				}
-				Emit-GroupItems -groupBy $row.groupBy -indent "$indent`t`t"
+				$rowGb = if ($row.groupBy) { $row.groupBy } else { $row.groupFields }
+				Emit-GroupItems -groupBy $rowGb -indent "$indent`t`t"
 				$rowOrder = $row.order; if (-not $rowOrder) { $rowOrder = @("Auto") }
 				Emit-Order -items $rowOrder -indent "$indent`t`t"
 				$rowSel = $row.selection; if (-not $rowSel) { $rowSel = @("Auto") }
@@ -1928,7 +1952,8 @@ function Emit-StructureItem {
 		# Points
 		if ($item.points) {
 			X "$indent`t<dcsset:point>"
-			Emit-GroupItems -groupBy $item.points.groupBy -indent "$indent`t`t"
+			$ptGb = if ($item.points.groupBy) { $item.points.groupBy } else { $item.points.groupFields }
+			Emit-GroupItems -groupBy $ptGb -indent "$indent`t`t"
 			$ptOrder = $item.points.order; if (-not $ptOrder) { $ptOrder = @("Auto") }
 			Emit-Order -items $ptOrder -indent "$indent`t`t"
 			$ptSel = $item.points.selection; if (-not $ptSel) { $ptSel = @("Auto") }
@@ -1939,7 +1964,8 @@ function Emit-StructureItem {
 		# Series
 		if ($item.series) {
 			X "$indent`t<dcsset:series>"
-			Emit-GroupItems -groupBy $item.series.groupBy -indent "$indent`t`t"
+			$srGb = if ($item.series.groupBy) { $item.series.groupBy } else { $item.series.groupFields }
+			Emit-GroupItems -groupBy $srGb -indent "$indent`t`t"
 			$srOrder = $item.series.order; if (-not $srOrder) { $srOrder = @("Auto") }
 			Emit-Order -items $srOrder -indent "$indent`t`t"
 			$srSel = $item.series.selection; if (-not $srSel) { $srSel = @("Auto") }

@@ -1,4 +1,4 @@
-﻿# skd-edit v1.8 — Atomic 1C DCS editor
+﻿# skd-edit v1.9 — Atomic 1C DCS editor
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -1924,6 +1924,23 @@ switch ($Operation) {
 			}
 
 			$selection = Ensure-SettingsChild $targetEl "selection" @()
+
+			# Dedup: skip if SelectedItemAuto already exists
+			if ($fieldName -eq "Auto") {
+				$isDup = $false
+				foreach ($ch in $selection.ChildNodes) {
+					if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'item') {
+						$typeAttr = $ch.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
+						if ($typeAttr -and $typeAttr.Contains("SelectedItemAuto")) { $isDup = $true; break }
+					}
+				}
+				if ($isDup) {
+					$target = if ($groupName) { "group `"$groupName`"" } else { "variant `"$varName`"" }
+					Write-Host "[WARN] SelectedItemAuto already exists in $target — skipped"
+					continue
+				}
+			}
+
 			$selIndent = Get-ContainerChildIndent $selection
 
 			$selXml = Build-SelectionItemFragment -fieldName $fieldName -indent $selIndent

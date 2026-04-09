@@ -83,6 +83,8 @@ powershell.exe -NoProfile -File .claude/skills/skd-compile/scripts/skd-compile.p
 
 Ограничения: `#noField`, `#noFilter`, `#noGroup`, `#noOrder`.
 
+В объектной форме: `"useRestriction": { "field": true, "condition": true, "group": true, "order": true }` или `"restrict": ["noField", "noFilter"]`.
+
 ### Итоги (shorthand)
 
 ```json
@@ -168,7 +170,20 @@ powershell.exe -NoProfile -File .claude/skills/skd-compile/scripts/skd-compile.p
 
 `>` разделяет уровни группировки. `details` (или `детали`) = детальные записи. `selection` и `order` по умолчанию `["Auto"]` на каждом уровне.
 
-Для сложных случаев (таблицы, диаграммы, фильтры на уровне группировки) используется объектная форма.
+Объектная форма — для сложных случаев (именованные группировки, selection/filter на уровне группировки, таблицы, диаграммы):
+
+```json
+"structure": [
+  {
+    "name": "ПоОрганизациям",
+    "groupFields": ["Организация"],
+    "selection": ["Организация", "Сумма", "Auto"],
+    "children": [{ "groupFields": [] }]
+  }
+]
+```
+
+`type` по умолчанию `"group"` (можно не указывать). `groupFields` — алиас для `groupBy`. Поддержка `name`, `selection`, `order`, `filter`, `outputParameters`, рекурсивных `children`.
 
 ### Варианты настроек
 
