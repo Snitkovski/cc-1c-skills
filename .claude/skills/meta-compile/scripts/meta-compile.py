@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.7 — Compile 1C metadata object from JSON
+# meta-compile v1.8 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -747,9 +747,11 @@ def emit_attribute(indent, parsed, context):
     X(f'{indent}\t\t<ExtendedEdit>false</ExtendedEdit>')
     X(f'{indent}\t\t<MinValue xsi:nil="true"/>')
     X(f'{indent}\t\t<MaxValue xsi:nil="true"/>')
-    if context not in ('tabular', 'processor', 'chart'):
+    # FillFromFillingValue / FillValue — not for tabular/processor/chart/register-other
+    # (Chart*, AccumulationRegister/AccountingRegister/CalculationRegister don't support these)
+    if context not in ('tabular', 'processor', 'chart', 'register-other'):
         X(f'{indent}\t\t<FillFromFillingValue>false</FillFromFillingValue>')
-    if context not in ('tabular', 'processor', 'chart'):
+    if context not in ('tabular', 'processor', 'chart', 'register-other'):
         emit_fill_value(f'{indent}\t\t', type_str)
     fill_checking = 'DontCheck'
     if 'req' in parsed.get('flags', []):
@@ -777,8 +779,8 @@ def emit_attribute(indent, parsed, context):
             indexing = parsed['indexing']
         X(f'{indent}\t\t<Indexing>{indexing}</Indexing>')
         X(f'{indent}\t\t<FullTextSearch>Use</FullTextSearch>')
-        # DataHistory — not for Chart* types (ChartOfAccounts, ChartOfCharacteristicTypes, ChartOfCalculationTypes)
-        if context != 'chart':
+        # DataHistory — not for Chart* types and non-InformationRegister register family
+        if context not in ('chart', 'register-other'):
             X(f'{indent}\t\t<DataHistory>Use</DataHistory>')
     X(f'{indent}\t</Properties>')
     X(f'{indent}</Attribute>')
@@ -2385,8 +2387,11 @@ if obj_type in ('InformationRegister', 'AccumulationRegister', 'AccountingRegist
             emit_resource('\t\t\t', r, obj_type)
         for d in dims:
             emit_dimension('\t\t\t', d, obj_type)
+        # InformationRegister.Attribute supports FillFromFillingValue/FillValue/DataHistory;
+        # AccumulationRegister/AccountingRegister/CalculationRegister.Attribute do NOT.
+        reg_ctx = 'register-info' if obj_type == 'InformationRegister' else 'register-other'
         for a in reg_attrs:
-            emit_attribute('\t\t\t', a, 'register')
+            emit_attribute('\t\t\t', a, reg_ctx)
         X('\t\t</ChildObjects>')
     else:
         X('\t\t<ChildObjects/>')

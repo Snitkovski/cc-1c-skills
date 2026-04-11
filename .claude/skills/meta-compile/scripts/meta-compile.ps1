@@ -1,4 +1,4 @@
-﻿# meta-compile v1.7 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.8 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -789,13 +789,14 @@ function Emit-Attribute {
 	X "$indent`t`t<MinValue xsi:nil=`"true`"/>"
 	X "$indent`t`t<MaxValue xsi:nil=`"true`"/>"
 
-	# FillFromFillingValue — not for tabular/processor/chart (Chart* types don't support these)
-	if ($context -notin @("tabular", "processor", "chart")) {
+	# FillFromFillingValue — not for tabular/processor/chart/register-other
+	# (Chart*, AccumulationRegister/AccountingRegister/CalculationRegister don't support these)
+	if ($context -notin @("tabular", "processor", "chart", "register-other")) {
 		X "$indent`t`t<FillFromFillingValue>false</FillFromFillingValue>"
 	}
 
-	# FillValue — not for tabular/processor/chart
-	if ($context -notin @("tabular", "processor", "chart")) {
+	# FillValue — same restriction
+	if ($context -notin @("tabular", "processor", "chart", "register-other")) {
 		Emit-FillValue "$indent`t`t" $typeStr
 	}
 
@@ -828,8 +829,8 @@ function Emit-Attribute {
 		X "$indent`t`t<Indexing>$indexing</Indexing>"
 
 		X "$indent`t`t<FullTextSearch>Use</FullTextSearch>"
-		# DataHistory — not for Chart* types (ChartOfAccounts, ChartOfCharacteristicTypes, ChartOfCalculationTypes)
-		if ($context -ne "chart") {
+		# DataHistory — not for Chart* types and non-InformationRegister register family
+		if ($context -notin @("chart", "register-other")) {
 			X "$indent`t`t<DataHistory>Use</DataHistory>"
 		}
 	}
@@ -2732,8 +2733,11 @@ if ($objType -in @("InformationRegister","AccumulationRegister","AccountingRegis
 		foreach ($d in $dims) {
 			Emit-Dimension "`t`t`t" $d $objType
 		}
+		# InformationRegister.Attribute supports FillFromFillingValue/FillValue/DataHistory;
+		# AccumulationRegister/AccountingRegister/CalculationRegister.Attribute do NOT.
+		$regCtx = if ($objType -eq "InformationRegister") { "register-info" } else { "register-other" }
 		foreach ($a in $regAttrs) {
-			Emit-Attribute "`t`t`t" $a "register"
+			Emit-Attribute "`t`t`t" $a $regCtx
 		}
 		X "`t`t</ChildObjects>"
 	} else {
