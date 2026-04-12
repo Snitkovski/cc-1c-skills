@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# meta-compile v1.8 — Compile 1C metadata object from JSON
+# meta-compile v1.9 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 
 import argparse
@@ -147,8 +147,8 @@ enum_value_aliases = {
     'RecordSubordinate': 'RecorderSubordinate', 'Subordinate': 'RecorderSubordinate',
     'ПодчинениеРегистратору': 'RecorderSubordinate', 'Независимый': 'Independent',
     # DependenceOnCalculationTypes (ChartOfCalculationTypes)
-    'NotDependOnCalculationTypes': 'DontUse', 'NoDependence': 'DontUse',
-    'Depend': 'RequireCalculationTypes', 'RequireCalculation': 'RequireCalculationTypes',
+    'NotDependOnCalculationTypes': 'DontUse', 'NoDependence': 'DontUse', 'NotUsed': 'DontUse',
+    'Depend': 'OnActionPeriod', 'ПоПериодуДействия': 'OnActionPeriod',
     # InformationRegisterPeriodicity
     'None': 'Nonperiodical', 'Daily': 'Day', 'Monthly': 'Month',
     'Quarterly': 'Quarter', 'Yearly': 'Year',
@@ -177,7 +177,7 @@ valid_enum_values = {
     'RegisterType': ['Balance', 'Turnovers'],
     'WriteMode': ['Independent', 'RecorderSubordinate'],
     'InformationRegisterPeriodicity': ['Nonperiodical', 'Second', 'Day', 'Month', 'Quarter', 'Year', 'RecorderPosition'],
-    'DependenceOnCalculationTypes': ['DontUse', 'RequireCalculationTypes'],
+    'DependenceOnCalculationTypes': ['DontUse', 'OnActionPeriod'],
     'DataLockControlMode': ['Automatic', 'Managed'],
     'FullTextSearch': ['Use', 'DontUse'],
     'DataHistory': ['Use', 'DontUse'],
@@ -199,16 +199,19 @@ valid_enum_values = {
 }
 
 def normalize_enum_value(prop_name, value):
-    # 1. Check alias dictionary
+    # 1. Check alias dictionary — silent auto-correct
     if value in enum_value_aliases:
         return enum_value_aliases[value]
-    # 2. Case-insensitive match against valid values
+    # 2. Case-insensitive match against valid values — silent
     valid = valid_enum_values.get(prop_name)
     if valid:
         for v in valid:
             if v.lower() == value.lower():
                 return v
-    # 3. Return as-is (validator will catch if wrong)
+        # 3. Known property, unknown value — error with hint
+        print(f"Invalid value '{value}' for property '{prop_name}'. Valid values: {', '.join(valid)}", file=sys.stderr)
+        sys.exit(1)
+    # 4. Unknown property — pass-through (no validation data)
     return value
 
 def get_enum_prop(prop_name, field_name, default):

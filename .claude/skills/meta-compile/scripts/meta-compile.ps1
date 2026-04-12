@@ -1,4 +1,4 @@
-﻿# meta-compile v1.8 — Compile 1C metadata object from JSON
+﻿# meta-compile v1.9 — Compile 1C metadata object from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -87,8 +87,8 @@ $script:enumValueAliases = @{
 	"RecordSubordinate" = "RecorderSubordinate"; "Subordinate" = "RecorderSubordinate"
 	"ПодчинениеРегистратору" = "RecorderSubordinate"; "Независимый" = "Independent"
 	# DependenceOnCalculationTypes (ChartOfCalculationTypes)
-	"NotDependOnCalculationTypes" = "DontUse"; "NoDependence" = "DontUse"
-	"Depend" = "RequireCalculationTypes"; "RequireCalculation" = "RequireCalculationTypes"
+	"NotDependOnCalculationTypes" = "DontUse"; "NoDependence" = "DontUse"; "NotUsed" = "DontUse"
+	"Depend" = "OnActionPeriod"; "ПоПериодуДействия" = "OnActionPeriod"
 	# InformationRegisterPeriodicity
 	"None" = "Nonperiodical"; "Daily" = "Day"; "Monthly" = "Month"
 	"Quarterly" = "Quarter"; "Yearly" = "Year"
@@ -117,7 +117,7 @@ $script:validEnumValues = @{
 	"RegisterType"                   = @("Balance","Turnovers")
 	"WriteMode"                      = @("Independent","RecorderSubordinate")
 	"InformationRegisterPeriodicity" = @("Nonperiodical","Second","Day","Month","Quarter","Year","RecorderPosition")
-	"DependenceOnCalculationTypes"   = @("DontUse","RequireCalculationTypes")
+	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod")
 	"DataLockControlMode"            = @("Automatic","Managed")
 	"FullTextSearch"                 = @("Use","DontUse")
 	"DataHistory"                    = @("Use","DontUse")
@@ -140,18 +140,21 @@ $script:validEnumValues = @{
 
 function Normalize-EnumValue {
 	param([string]$propName, [string]$value)
-	# 1. Check alias dictionary
+	# 1. Check alias dictionary — silent auto-correct
 	if ($script:enumValueAliases.ContainsKey($value)) {
 		return $script:enumValueAliases[$value]
 	}
-	# 2. Case-insensitive match against valid values
+	# 2. Case-insensitive match against valid values — silent
 	$valid = $script:validEnumValues[$propName]
 	if ($valid) {
 		foreach ($v in $valid) {
 			if ($v -ieq $value) { return $v }
 		}
+		# 3. Known property, unknown value — error with hint
+		Write-Error "Invalid value '$value' for property '$propName'. Valid values: $($valid -join ', ')"
+		exit 1
 	}
-	# 3. Return as-is (validator will catch if wrong)
+	# 4. Unknown property — pass-through (no validation data)
 	return $value
 }
 

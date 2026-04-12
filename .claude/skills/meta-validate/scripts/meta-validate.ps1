@@ -262,7 +262,7 @@ $validPropertyValues = @{
 	"FillChecking"                   = @("DontCheck","ShowError","ShowWarning")
 	"Indexing"                       = @("DontIndex","Index","IndexWithAdditionalOrder")
 	"DataHistory"                    = @("Use","DontUse")
-	"DependenceOnCalculationTypes"   = @("DontUse","RequireCalculationTypes")
+	"DependenceOnCalculationTypes"   = @("DontUse","OnActionPeriod")
 }
 
 # Properties forbidden per type (would cause LoadConfigFromFiles error)
