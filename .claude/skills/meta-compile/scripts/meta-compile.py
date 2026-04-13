@@ -2365,9 +2365,11 @@ if obj_type in types_with_attr_ts:
             columns = ts_sections[ts_name]
             emit_tabular_section('\t\t\t', ts_name, columns, obj_type, obj_name)
         for af in acct_flags:
-            emit_accounting_flag('\t\t\t', str(af))
+            af_name = af['name'] if isinstance(af, dict) else str(af)
+            emit_accounting_flag('\t\t\t', af_name)
         for edf in ext_dim_flags:
-            emit_ext_dimension_accounting_flag('\t\t\t', str(edf))
+            edf_name = edf['name'] if isinstance(edf, dict) else str(edf)
+            emit_ext_dimension_accounting_flag('\t\t\t', edf_name)
         for aa in addr_attrs:
             emit_addressing_attribute('\t\t\t', aa)
         X('\t\t</ChildObjects>')

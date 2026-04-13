@@ -2694,10 +2694,12 @@ if ($objType -in $typesWithAttrTS) {
 			Emit-TabularSection "`t`t`t" $tsName $columns $objType $objName
 		}
 		foreach ($af in $acctFlags) {
-			Emit-AccountingFlag "`t`t`t" "$af"
+			$afName = if ($af.name) { $af.name } else { "$af" }
+			Emit-AccountingFlag "`t`t`t" $afName
 		}
 		foreach ($edf in $extDimFlags) {
-			Emit-ExtDimensionAccountingFlag "`t`t`t" "$edf"
+			$edfName = if ($edf.name) { $edf.name } else { "$edf" }
+			Emit-ExtDimensionAccountingFlag "`t`t`t" $edfName
 		}
 		foreach ($aa in $addrAttrs) {
 			Emit-AddressingAttribute "`t`t`t" $aa

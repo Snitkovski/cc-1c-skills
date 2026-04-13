@@ -460,11 +460,11 @@
 		<ChildObjects>
 			<AccountingFlag uuid="UUID-016">
 				<Properties>
-					<Name>@{name=Валютный}</Name>
+					<Name>Валютный</Name>
 					<Synonym>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
-							<v8:content>@{name=валютный}</v8:content>
+							<v8:content>Валютный</v8:content>
 						</v8:item>
 					</Synonym>
 					<Comment />
@@ -492,11 +492,11 @@
 			</AccountingFlag>
 			<AccountingFlag uuid="UUID-017">
 				<Properties>
-					<Name>@{name=Количественный}</Name>
+					<Name>Количественный</Name>
 					<Synonym>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
-							<v8:content>@{name=количественный}</v8:content>
+							<v8:content>Количественный</v8:content>
 						</v8:item>
 					</Synonym>
 					<Comment />
@@ -524,11 +524,11 @@
 			</AccountingFlag>
 			<ExtDimensionAccountingFlag uuid="UUID-018">
 				<Properties>
-					<Name>@{name=Валютный}</Name>
+					<Name>Валютный</Name>
 					<Synonym>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
-							<v8:content>@{name=валютный}</v8:content>
+							<v8:content>Валютный</v8:content>
 						</v8:item>
 					</Synonym>
 					<Comment />
@@ -556,11 +556,11 @@
 			</ExtDimensionAccountingFlag>
 			<ExtDimensionAccountingFlag uuid="UUID-019">
 				<Properties>
-					<Name>@{name=Количественный}</Name>
+					<Name>Количественный</Name>
 					<Synonym>
 						<v8:item>
 							<v8:lang>ru</v8:lang>
-							<v8:content>@{name=количественный}</v8:content>
+							<v8:content>Количественный</v8:content>
 						</v8:item>
 					</Synonym>
 					<Comment />

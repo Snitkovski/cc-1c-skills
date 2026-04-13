@@ -1113,77 +1113,76 @@ def generate_chart_of_accounts_dsl(meta, preset_data, purpose):
 
 
 def generate_chart_of_accounts_item_dsl(meta, p, fd, preset_data):
-    elements = OrderedDict()
+    elements = []
 
     # Header: Code + Parent
-    header_left = OrderedDict()
+    header_left_children = []
     if meta.get('CodeLength', 0) > 0:
-        header_left['\u041a\u043e\u0434'] = {'element': 'input', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.Code'}
-    header_right = OrderedDict()
+        header_left_children.append(OrderedDict([('input', '\u041a\u043e\u0434'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.Code')]))
+    header_right_children = []
     if meta.get('Hierarchical'):
         parent_title = (p.get('parent') or {}).get('title', '\u041f\u043e\u0434\u0447\u0438\u043d\u0435\u043d \u0441\u0447\u0435\u0442\u0443')
-        header_right['\u0420\u043e\u0434\u0438\u0442\u0435\u043b\u044c'] = {'element': 'input', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.Parent', 'title': parent_title}
+        header_right_children.append(OrderedDict([('input', '\u0420\u043e\u0434\u0438\u0442\u0435\u043b\u044c'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.Parent'), ('title', parent_title)]))
 
-    if len(header_right) > 0:
-        elements['\u0413\u0440\u0443\u043f\u043f\u0430\u0428\u0430\u043f\u043a\u0430'] = OrderedDict([
-            ('element', 'group'), ('groupType', 'horizontal'), ('showTitle', False), ('representation', 'none'),
-            ('elements', OrderedDict([
-                ('\u0413\u0440\u0443\u043f\u043f\u0430\u0428\u0430\u043f\u043a\u0430\u041b\u0435\u0432\u043e', OrderedDict([('element', 'group'), ('groupType', 'vertical'), ('showTitle', False), ('elements', header_left)])),
-                ('\u0413\u0440\u0443\u043f\u043f\u0430\u0428\u0430\u043f\u043a\u0430\u041f\u0440\u0430\u0432\u043e', OrderedDict([('element', 'group'), ('groupType', 'vertical'), ('showTitle', False), ('elements', header_right)])),
-            ])),
-        ])
-    elif len(header_left) > 0:
-        for k, v in header_left.items():
-            elements[k] = v
+    if len(header_right_children) > 0:
+        elements.append(OrderedDict([
+            ('group', 'horizontal'), ('name', '\u0413\u0440\u0443\u043f\u043f\u0430\u0428\u0430\u043f\u043a\u0430'), ('showTitle', False), ('representation', 'none'),
+            ('children', [
+                OrderedDict([('group', 'vertical'), ('name', '\u0413\u0440\u0443\u043f\u043f\u0430\u0428\u0430\u043f\u043a\u0430\u041b\u0435\u0432\u043e'), ('showTitle', False), ('children', header_left_children)]),
+                OrderedDict([('group', 'vertical'), ('name', '\u0413\u0440\u0443\u043f\u043f\u0430\u0428\u0430\u043f\u043a\u0430\u041f\u0440\u0430\u0432\u043e'), ('showTitle', False), ('children', header_right_children)]),
+            ]),
+        ]))
+    elif len(header_left_children) > 0:
+        elements.extend(header_left_children)
 
     # Description
     if meta.get('DescriptionLength', 0) > 0:
-        elements['\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435'] = {'element': 'input', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.Description'}
+        elements.append(OrderedDict([('input', '\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.Description')]))
 
     # OffBalance
-    elements['\u0417\u0430\u0431\u0430\u043b\u0430\u043d\u0441\u043e\u0432\u044b\u0439'] = {'element': 'check', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.OffBalance'}
+    elements.append(OrderedDict([('check', '\u0417\u0430\u0431\u0430\u043b\u0430\u043d\u0441\u043e\u0432\u044b\u0439'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.OffBalance')]))
 
     # AccountingFlags as checkboxes
     if meta.get('AccountingFlags') and len(meta['AccountingFlags']) > 0:
-        flag_elements = OrderedDict()
+        flag_children = []
         for flag in meta['AccountingFlags']:
-            flag_elements[flag['Name']] = {'element': 'check', 'path': f"\u041e\u0431\u044a\u0435\u043a\u0442.{flag['Name']}"}
-        elements['\u0413\u0440\u0443\u043f\u043f\u0430\u041f\u0440\u0438\u0437\u043d\u0430\u043a\u0438\u0423\u0447\u0435\u0442\u0430'] = OrderedDict([
-            ('element', 'group'), ('groupType', 'vertical'), ('title', '\u041f\u0440\u0438\u0437\u043d\u0430\u043a\u0438 \u0443\u0447\u0435\u0442\u0430'),
-            ('elements', flag_elements),
-        ])
+            flag_children.append(OrderedDict([('check', flag['Name']), ('path', f"\u041e\u0431\u044a\u0435\u043a\u0442.{flag['Name']}")]))
+        elements.append(OrderedDict([
+            ('group', 'vertical'), ('name', '\u0413\u0440\u0443\u043f\u043f\u0430\u041f\u0440\u0438\u0437\u043d\u0430\u043a\u0438\u0423\u0447\u0435\u0442\u0430'), ('title', '\u041f\u0440\u0438\u0437\u043d\u0430\u043a\u0438 \u0443\u0447\u0435\u0442\u0430'),
+            ('children', flag_children),
+        ]))
 
     # ExtDimensionTypes table
     if meta.get('MaxExtDimensionCount', 0) > 0:
-        ed_cols = OrderedDict()
-        ed_cols['\u0412\u0438\u0434\u0421\u0443\u0431\u043a\u043e\u043d\u0442\u043e'] = {'element': 'input', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.ExtDimensionTypes.ExtDimensionType'}
-        ed_cols['\u0422\u043e\u043b\u044c\u043a\u043e\u041e\u0431\u043e\u0440\u043e\u0442\u044b'] = {'element': 'check', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.ExtDimensionTypes.TurnoversOnly'}
+        ed_cols = []
+        ed_cols.append(OrderedDict([('input', '\u0412\u0438\u0434\u0421\u0443\u0431\u043a\u043e\u043d\u0442\u043e'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.ExtDimensionTypes.ExtDimensionType')]))
+        ed_cols.append(OrderedDict([('check', '\u0422\u043e\u043b\u044c\u043a\u043e\u041e\u0431\u043e\u0440\u043e\u0442\u044b'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.ExtDimensionTypes.TurnoversOnly')]))
         if meta.get('ExtDimensionAccountingFlags'):
             for ed_flag in meta['ExtDimensionAccountingFlags']:
-                ed_cols[ed_flag['Name']] = {'element': 'check', 'path': f"\u041e\u0431\u044a\u0435\u043a\u0442.ExtDimensionTypes.{ed_flag['Name']}"}
-        elements['\u0412\u0438\u0434\u044b\u0421\u0443\u0431\u043a\u043e\u043d\u0442\u043e'] = OrderedDict([
-            ('element', 'table'),
+                ed_cols.append(OrderedDict([('check', ed_flag['Name']), ('path', f"\u041e\u0431\u044a\u0435\u043a\u0442.ExtDimensionTypes.{ed_flag['Name']}")]))
+        elements.append(OrderedDict([
+            ('table', '\u0412\u0438\u0434\u044b\u0421\u0443\u0431\u043a\u043e\u043d\u0442\u043e'),
             ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.ExtDimensionTypes'),
             ('columns', ed_cols),
-        ])
+        ]))
 
     # Custom attributes
     for attr in meta['Attributes']:
         if not is_displayable_type(attr['Type']):
             continue
-        elements[attr['Name']] = new_field_element(attr['Name'], f"\u041e\u0431\u044a\u0435\u043a\u0442.{attr['Name']}", attr['Type'], fd)
+        elements.append(new_field_element(attr['Name'], f"\u041e\u0431\u044a\u0435\u043a\u0442.{attr['Name']}", attr['Type'], fd))
 
     # Tabular sections
     ts_exclude = ['\u0414\u043e\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0435\u0420\u0435\u043a\u0432\u0438\u0437\u0438\u0442\u044b', '\u041f\u0440\u0435\u0434\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u0438\u044f']
     for ts in meta['TabularSections']:
         if ts['Name'] in ts_exclude:
             continue
-        ts_cols = OrderedDict()
+        ts_cols = []
         for col in ts['Columns']:
             if not is_displayable_type(col['Type']):
                 continue
-            ts_cols[f"{ts['Name']}{col['Name']}"] = new_field_element(col['Name'], f"\u041e\u0431\u044a\u0435\u043a\u0442.{ts['Name']}.{col['Name']}", col['Type'], fd)
-        elements[ts['Name']] = OrderedDict([('element', 'table'), ('path', f"\u041e\u0431\u044a\u0435\u043a\u0442.{ts['Name']}"), ('columns', ts_cols)])
+            ts_cols.append(new_field_element(f"{ts['Name']}{col['Name']}", f"\u041e\u0431\u044a\u0435\u043a\u0442.{ts['Name']}.{col['Name']}", col['Type'], fd))
+        elements.append(OrderedDict([('table', ts['Name']), ('path', f"\u041e\u0431\u044a\u0435\u043a\u0442.{ts['Name']}"), ('columns', ts_cols)]))
 
     props = OrderedDict()
     if p.get('properties'):
@@ -1201,14 +1200,14 @@ def generate_chart_of_accounts_item_dsl(meta, p, fd, preset_data):
 
 
 def generate_chart_of_accounts_folder_dsl(meta, p):
-    elements = OrderedDict()
+    elements = []
     if meta.get('CodeLength', 0) > 0:
-        elements['\u041a\u043e\u0434'] = {'element': 'input', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.Code'}
+        elements.append(OrderedDict([('input', '\u041a\u043e\u0434'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.Code')]))
     if meta.get('DescriptionLength', 0) > 0:
-        elements['\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435'] = {'element': 'input', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.Description'}
+        elements.append(OrderedDict([('input', '\u041d\u0430\u0438\u043c\u0435\u043d\u043e\u0432\u0430\u043d\u0438\u0435'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.Description')]))
     if meta.get('Hierarchical'):
         parent_title = (p.get('parent') or {}).get('title', '\u041f\u043e\u0434\u0447\u0438\u043d\u0435\u043d \u0441\u0447\u0435\u0442\u0443')
-        elements['\u0420\u043e\u0434\u0438\u0442\u0435\u043b\u044c'] = {'element': 'input', 'path': '\u041e\u0431\u044a\u0435\u043a\u0442.Parent', 'title': parent_title}
+        elements.append(OrderedDict([('input', '\u0420\u043e\u0434\u0438\u0442\u0435\u043b\u044c'), ('path', '\u041e\u0431\u044a\u0435\u043a\u0442.Parent'), ('title', parent_title)]))
 
     props = OrderedDict([('windowOpeningMode', 'LockOwnerWindow')])
     if p.get('properties'):
