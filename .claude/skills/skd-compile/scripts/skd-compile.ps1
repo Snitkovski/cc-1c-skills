@@ -1,4 +1,4 @@
-﻿# skd-compile v1.17 — Compile 1C DCS from JSON
+﻿# skd-compile v1.18 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -1006,13 +1006,18 @@ function Emit-SingleParam {
 	}
 
 	# DenyIncompleteValues
-	if ($p -isnot [string] -and $p.denyIncompleteValues -eq $true) {
+	$deny = $parsed.denyIncompleteValues -eq $true -or (
+		$null -ne $p -and $p -isnot [string] -and $p.denyIncompleteValues -eq $true)
+	if ($deny) {
 		X "`t`t<denyIncompleteValues>true</denyIncompleteValues>"
 	}
 
-	# Use
-	if ($p -isnot [string] -and $p.use) {
-		X "`t`t<use>$(Esc-Xml "$($p.use)")</use>"
+	# Use — object form wins, else parsed (set by @autoDates default)
+	$useVal = $null
+	if ($null -ne $p -and $p -isnot [string] -and $p.use) { $useVal = "$($p.use)" }
+	elseif ($parsed.use) { $useVal = "$($parsed.use)" }
+	if ($useVal) {
+		X "`t`t<use>$(Esc-Xml $useVal)</use>"
 	}
 
 	X "`t</parameter>"
@@ -1037,6 +1042,15 @@ function Emit-Parameters {
 			if ($p.valueListAllowed -eq $true) { $parsed.valueListAllowed = $true }
 			if ($p.hidden -eq $true) { $parsed.hidden = $true }
 			if ($p.autoDates -eq $true) { $parsed.autoDates = $true }
+		}
+
+		# @autoDates implies use=Always + denyIncompleteValues=true by default
+		# (derived &НачалоПериода/&КонецПериода need a populated period).
+		# Explicit values in object form override these defaults.
+		if ($parsed.autoDates) {
+			$isObj = ($p -isnot [string]) -and ($null -ne $p)
+			if (-not ($isObj -and $null -ne $p.use)) { $parsed.use = 'Always' }
+			if (-not ($isObj -and $null -ne $p.denyIncompleteValues)) { $parsed.denyIncompleteValues = $true }
 		}
 
 		Emit-SingleParam -p $p -parsed $parsed

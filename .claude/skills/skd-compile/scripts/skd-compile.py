@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.17 — Compile 1C DCS from JSON
+# skd-compile v1.18 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -867,12 +867,19 @@ def emit_single_param(lines, p, parsed):
             lines.append('\t\t</availableValue>')
 
     # DenyIncompleteValues
-    if p is not None and not isinstance(p, str) and p.get('denyIncompleteValues') is True:
+    deny = parsed.get('denyIncompleteValues') is True or (
+        p is not None and not isinstance(p, str) and p.get('denyIncompleteValues') is True)
+    if deny:
         lines.append('\t\t<denyIncompleteValues>true</denyIncompleteValues>')
 
     # Use
+    use_val = None
     if p is not None and not isinstance(p, str) and p.get('use'):
-        lines.append(f'\t\t<use>{esc_xml(str(p["use"]))}</use>')
+        use_val = str(p['use'])
+    elif parsed.get('use'):
+        use_val = str(parsed['use'])
+    if use_val:
+        lines.append(f'\t\t<use>{esc_xml(use_val)}</use>')
 
     lines.append('\t</parameter>')
 
@@ -905,6 +912,16 @@ def emit_parameters(lines, defn):
                 parsed['hidden'] = True
             if p.get('autoDates') is True:
                 parsed['autoDates'] = True
+
+        # @autoDates implies use=Always + denyIncompleteValues=true by default
+        # (derived &НачалоПериода/&КонецПериода need a populated period).
+        # Explicit values in object form override these defaults.
+        if parsed.get('autoDates'):
+            is_obj = p is not None and not isinstance(p, str)
+            if not (is_obj and p.get('use') is not None):
+                parsed['use'] = 'Always'
+            if not (is_obj and p.get('denyIncompleteValues') is not None):
+                parsed['denyIncompleteValues'] = True
 
         emit_single_param(lines, p, parsed)
 
