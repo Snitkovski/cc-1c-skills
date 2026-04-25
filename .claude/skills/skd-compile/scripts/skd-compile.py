@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.20 — Compile 1C DCS from JSON
+# skd-compile v1.21 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -41,10 +41,18 @@ def emit_mltext(lines, indent, tag, text):
         lines.append(f"{indent}<{tag}/>")
         return
     lines.append(f'{indent}<{tag} xsi:type="v8:LocalStringType">')
-    lines.append(f"{indent}\t<v8:item>")
-    lines.append(f"{indent}\t\t<v8:lang>ru</v8:lang>")
-    lines.append(f"{indent}\t\t<v8:content>{esc_xml(text)}</v8:content>")
-    lines.append(f"{indent}\t</v8:item>")
+    # Multi-lang: object form { ru: "...", en: "..." } -- one <v8:item> per language
+    if isinstance(text, dict):
+        for lang, content in text.items():
+            lines.append(f"{indent}\t<v8:item>")
+            lines.append(f"{indent}\t\t<v8:lang>{esc_xml(str(lang))}</v8:lang>")
+            lines.append(f"{indent}\t\t<v8:content>{esc_xml(str(content))}</v8:content>")
+            lines.append(f"{indent}\t</v8:item>")
+    else:
+        lines.append(f"{indent}\t<v8:item>")
+        lines.append(f"{indent}\t\t<v8:lang>ru</v8:lang>")
+        lines.append(f"{indent}\t\t<v8:content>{esc_xml(str(text))}</v8:content>")
+        lines.append(f"{indent}\t</v8:item>")
     lines.append(f"{indent}</{tag}>")
 
 
@@ -496,7 +504,7 @@ def emit_field(lines, field_def, indent):
         f = {
             'dataPath': str(field_def.get('dataPath', '')) or str(field_def.get('field', '')),
             'field': str(field_def.get('field', '')) or str(field_def.get('dataPath', '')),
-            'title': str(field_def.get('title', '')) if field_def.get('title') else '',
+            'title': field_def.get('title') if field_def.get('title') else '',
             'type': (
                 [resolve_type_str(str(t)) for t in field_def['type']]
                 if isinstance(field_def['type'], list)
@@ -698,7 +706,7 @@ def emit_calc_fields(lines, defn):
             data_path = str(cf.get('dataPath') or cf.get('field') or cf.get('name') or '')
             expression = str(cf.get('expression', ''))
             if cf.get('title'):
-                title = str(cf['title'])
+                title = cf['title']
             if cf.get('type'):
                 type_str = resolve_type_str(str(cf['type']))
 
@@ -823,11 +831,11 @@ def emit_single_param(lines, p, parsed):
     # a synonym — 1C UI labels a parameter's caption "Представление").
     title = ''
     if parsed.get('title'):
-        title = str(parsed['title'])
+        title = parsed['title']
     elif p is not None and not isinstance(p, str) and p.get('title'):
-        title = str(p['title'])
+        title = p['title']
     elif p is not None and not isinstance(p, str) and p.get('presentation'):
-        title = str(p['presentation'])
+        title = p['presentation']
     if title:
         emit_mltext(lines, '\t\t', 'title', title)
 
@@ -873,14 +881,9 @@ def emit_single_param(lines, p, parsed):
             lines.append('\t\t<availableValue>')
             lines.append(f'\t\t\t<value xsi:type="{av_type}">{esc_xml(av_val)}</value>')
             # `title` accepted as synonym of `presentation` — both map to the same UI label.
-            av_pres = str(av.get('presentation') or av.get('title') or '')
+            av_pres = av.get('presentation') or av.get('title') or ''
             if av_pres:
-                lines.append('\t\t\t<presentation xsi:type="v8:LocalStringType">')
-                lines.append('\t\t\t\t<v8:item>')
-                lines.append('\t\t\t\t\t<v8:lang>ru</v8:lang>')
-                lines.append(f'\t\t\t\t\t<v8:content>{esc_xml(av_pres)}</v8:content>')
-                lines.append('\t\t\t\t</v8:item>')
-                lines.append('\t\t\t</presentation>')
+                emit_mltext(lines, '\t\t\t', 'presentation', av_pres)
             lines.append('\t\t</availableValue>')
 
     # DenyIncompleteValues
@@ -1208,12 +1211,7 @@ def _emit_area_template_dsl(lines, t):
                             cell_extra_items.append('\t\t\t\t\t</dcscor:item>')
                     else:
                         lines.append('\t\t\t\t\t<dcsat:item xsi:type="dcsat:Field">')
-                        lines.append('\t\t\t\t\t\t<dcsat:value xsi:type="v8:LocalStringType">')
-                        lines.append('\t\t\t\t\t\t\t<v8:item>')
-                        lines.append('\t\t\t\t\t\t\t\t<v8:lang>ru</v8:lang>')
-                        lines.append(f'\t\t\t\t\t\t\t\t<v8:content>{esc_xml(cell_str)}</v8:content>')
-                        lines.append('\t\t\t\t\t\t\t</v8:item>')
-                        lines.append('\t\t\t\t\t\t</dcsat:value>')
+                        emit_mltext(lines, '\t\t\t\t\t\t', 'dcsat:value', cell_str)
                         lines.append('\t\t\t\t\t</dcsat:item>')
                 h = min_height if r == 0 else 0
                 _emit_cell_appearance(lines, style, w, False, False, h, cell_extra_items or None)
@@ -1397,12 +1395,7 @@ def emit_filter_item(lines, item, indent):
         lines.append(f'{indent}\t<dcsset:right xsi:type="{vt}">{v_str}</dcsset:right>')
 
     if item.get('presentation'):
-        lines.append(f'{indent}\t<dcsset:presentation xsi:type="v8:LocalStringType">')
-        lines.append(f'{indent}\t\t<v8:item>')
-        lines.append(f'{indent}\t\t\t<v8:lang>ru</v8:lang>')
-        lines.append(f'{indent}\t\t\t<v8:content>{esc_xml(str(item["presentation"]))}</v8:content>')
-        lines.append(f'{indent}\t\t</v8:item>')
-        lines.append(f'{indent}\t</dcsset:presentation>')
+        emit_mltext(lines, f'{indent}\t', 'dcsset:presentation', item["presentation"])
 
     if item.get('viewMode'):
         lines.append(f'{indent}\t<dcsset:viewMode>{esc_xml(str(item["viewMode"]))}</dcsset:viewMode>')
@@ -1412,12 +1405,7 @@ def emit_filter_item(lines, item, indent):
         lines.append(f'{indent}\t<dcsset:userSettingID>{esc_xml(uid)}</dcsset:userSettingID>')
 
     if item.get('userSettingPresentation'):
-        lines.append(f'{indent}\t<dcsset:userSettingPresentation xsi:type="v8:LocalStringType">')
-        lines.append(f'{indent}\t\t<v8:item>')
-        lines.append(f'{indent}\t\t\t<v8:lang>ru</v8:lang>')
-        lines.append(f'{indent}\t\t\t<v8:content>{esc_xml(str(item["userSettingPresentation"]))}</v8:content>')
-        lines.append(f'{indent}\t\t</v8:item>')
-        lines.append(f'{indent}\t</dcsset:userSettingPresentation>')
+        emit_mltext(lines, f'{indent}\t', 'dcsset:userSettingPresentation', item["userSettingPresentation"])
 
     lines.append(f'{indent}</dcsset:item>')
 
@@ -1492,12 +1480,7 @@ def emit_appearance_value(lines, key, val, indent):
     elif actual_val == 'true' or actual_val == 'false':
         lines.append(f'{indent}\t<dcscor:value xsi:type="xs:boolean">{actual_val}</dcscor:value>')
     elif key in ('\u0422\u0435\u043a\u0441\u0442', '\u0417\u0430\u0433\u043e\u043b\u043e\u0432\u043e\u043a', '\u0424\u043e\u0440\u043c\u0430\u0442'):
-        lines.append(f'{indent}\t<dcscor:value xsi:type="v8:LocalStringType">')
-        lines.append(f'{indent}\t\t<v8:item>')
-        lines.append(f'{indent}\t\t\t<v8:lang>ru</v8:lang>')
-        lines.append(f'{indent}\t\t\t<v8:content>{esc_xml(actual_val)}</v8:content>')
-        lines.append(f'{indent}\t\t</v8:item>')
-        lines.append(f'{indent}\t</dcscor:value>')
+        emit_mltext(lines, f'{indent}\t', 'dcscor:value', actual_val)
     else:
         lines.append(f'{indent}\t<dcscor:value xsi:type="xs:string">{esc_xml(actual_val)}</dcscor:value>')
     lines.append(f'{indent}</dcscor:item>')
@@ -1562,12 +1545,7 @@ def emit_output_parameters(lines, params, indent):
         lines.append(f'{indent}\t<dcscor:item xsi:type="dcsset:SettingsParameterValue">')
         lines.append(f'{indent}\t\t<dcscor:parameter>{esc_xml(key)}</dcscor:parameter>')
         if ptype == 'mltext':
-            lines.append(f'{indent}\t\t<dcscor:value xsi:type="v8:LocalStringType">')
-            lines.append(f'{indent}\t\t\t<v8:item>')
-            lines.append(f'{indent}\t\t\t\t<v8:lang>ru</v8:lang>')
-            lines.append(f'{indent}\t\t\t\t<v8:content>{esc_xml(val_str)}</v8:content>')
-            lines.append(f'{indent}\t\t\t</v8:item>')
-            lines.append(f'{indent}\t\t</dcscor:value>')
+            emit_mltext(lines, f'{indent}\t\t', 'dcscor:value', val_str)
         else:
             lines.append(f'{indent}\t\t<dcscor:value xsi:type="{ptype}">{esc_xml(val_str)}</dcscor:value>')
         lines.append(f'{indent}\t</dcscor:item>')
@@ -1637,12 +1615,7 @@ def emit_data_parameters(lines, items, indent):
             lines.append(f'{indent}\t\t<dcsset:userSettingID>{esc_xml(uid)}</dcsset:userSettingID>')
 
         if dp.get('userSettingPresentation'):
-            lines.append(f'{indent}\t\t<dcsset:userSettingPresentation xsi:type="v8:LocalStringType">')
-            lines.append(f'{indent}\t\t\t<v8:item>')
-            lines.append(f'{indent}\t\t\t\t<v8:lang>ru</v8:lang>')
-            lines.append(f'{indent}\t\t\t\t<v8:content>{esc_xml(str(dp["userSettingPresentation"]))}</v8:content>')
-            lines.append(f'{indent}\t\t\t</v8:item>')
-            lines.append(f'{indent}\t\t</dcsset:userSettingPresentation>')
+            emit_mltext(lines, f'{indent}\t\t', 'dcsset:userSettingPresentation', dp["userSettingPresentation"])
 
         lines.append(f'{indent}\t</dcscor:item>')
     lines.append(f'{indent}</dcsset:dataParameters>')
@@ -1824,13 +1797,8 @@ def emit_settings_variants(lines, defn):
         lines.append('\t<settingsVariant>')
         lines.append(f'\t\t<dcsset:name>{esc_xml(str(v["name"]))}</dcsset:name>')
 
-        pres = str(v.get('presentation', '')) or str(v.get('title', '')) or str(v['name'])
-        lines.append('\t\t<dcsset:presentation xsi:type="v8:LocalStringType">')
-        lines.append('\t\t\t<v8:item>')
-        lines.append('\t\t\t\t<v8:lang>ru</v8:lang>')
-        lines.append(f'\t\t\t\t<v8:content>{esc_xml(pres)}</v8:content>')
-        lines.append('\t\t\t</v8:item>')
-        lines.append('\t\t</dcsset:presentation>')
+        pres = v.get('presentation') or v.get('title') or v['name']
+        emit_mltext(lines, '\t\t', 'dcsset:presentation', pres)
 
         lines.append('\t\t<dcsset:settings xmlns:style="http://v8.1c.ru/8.1/data/ui/style" xmlns:sys="http://v8.1c.ru/8.1/data/ui/fonts/system" xmlns:web="http://v8.1c.ru/8.1/data/ui/colors/web" xmlns:win="http://v8.1c.ru/8.1/data/ui/colors/windows">')
 

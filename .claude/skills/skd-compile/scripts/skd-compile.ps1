@@ -1,4 +1,4 @@
-﻿# skd-compile v1.20 — Compile 1C DCS from JSON
+﻿# skd-compile v1.21 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -80,12 +80,25 @@ function Resolve-QueryValue {
 }
 
 function Emit-MLText {
-	param([string]$tag, [string]$text, [string]$indent)
+	param([string]$tag, $text, [string]$indent)
 	X "$indent<$tag xsi:type=`"v8:LocalStringType`">"
-	X "$indent`t<v8:item>"
-	X "$indent`t`t<v8:lang>ru</v8:lang>"
-	X "$indent`t`t<v8:content>$(Esc-Xml $text)</v8:content>"
-	X "$indent`t</v8:item>"
+	# Multi-lang: object form { ru: "...", en: "..." } → one <v8:item> per language
+	if ($text -is [System.Management.Automation.PSCustomObject] -or $text -is [hashtable] -or $text -is [System.Collections.IDictionary]) {
+		$props = if ($text -is [System.Management.Automation.PSCustomObject]) { $text.PSObject.Properties } else { $text.GetEnumerator() | ForEach-Object { @{ Name = $_.Key; Value = $_.Value } } }
+		foreach ($p in $props) {
+			$lang = if ($p -is [hashtable]) { $p.Name } else { $p.Name }
+			$content = if ($p -is [hashtable]) { $p.Value } else { $p.Value }
+			X "$indent`t<v8:item>"
+			X "$indent`t`t<v8:lang>$(Esc-Xml "$lang")</v8:lang>"
+			X "$indent`t`t<v8:content>$(Esc-Xml "$content")</v8:content>"
+			X "$indent`t</v8:item>"
+		}
+	} else {
+		X "$indent`t<v8:item>"
+		X "$indent`t`t<v8:lang>ru</v8:lang>"
+		X "$indent`t`t<v8:content>$(Esc-Xml "$text")</v8:content>"
+		X "$indent`t</v8:item>"
+	}
 	X "$indent</$tag>"
 }
 
@@ -610,7 +623,7 @@ function Emit-Field {
 		$f = @{
 			dataPath = if ($fieldDef.dataPath) { "$($fieldDef.dataPath)" } elseif ($fieldDef.field) { "$($fieldDef.field)" } else { "" }
 			field = if ($fieldDef.field) { "$($fieldDef.field)" } else { "$($fieldDef.dataPath)" }
-			title = if ($fieldDef.title) { "$($fieldDef.title)" } else { "" }
+			title = if ($fieldDef.title) { $fieldDef.title } else { "" }
 			type = if ($fieldDef.type) {
 				if ($fieldDef.type -is [array] -or $fieldDef.type -is [System.Collections.IList]) {
 					@($fieldDef.type | ForEach-Object { Resolve-TypeStr "$_" })
@@ -845,7 +858,7 @@ function Emit-CalcFields {
 			$parsed = Parse-CalcShorthand $cf
 			$dataPath = "$($parsed.dataPath)"
 			$expression = "$($parsed.expression)"
-			$title = "$($parsed.title)"
+			$title = $parsed.title
 			$typeStr = "$($parsed.type)"
 			if ($parsed.restrict) { $restrictTokens = @($parsed.restrict) }
 		} else {
@@ -853,7 +866,7 @@ function Emit-CalcFields {
 				elseif ($cf.field) { "$($cf.field)" }
 				else { "$($cf.name)" }
 			$expression = "$($cf.expression)"
-			if ($cf.title) { $title = "$($cf.title)" }
+			if ($cf.title) { $title = $cf.title }
 			if ($cf.type) { $typeStr = Resolve-TypeStr "$($cf.type)" }
 
 			$restrictVal = if ($cf.restrict) { $cf.restrict } elseif ($cf.useRestriction) { $cf.useRestriction } else { $null }
@@ -955,11 +968,11 @@ function Emit-SingleParam {
 	# a synonym — 1C UI labels a parameter's caption "Представление").
 	$title = ""
 	if ($parsed.title) {
-		$title = "$($parsed.title)"
+		$title = $parsed.title
 	} elseif ($p -isnot [string] -and $p.title) {
-		$title = "$($p.title)"
+		$title = $p.title
 	} elseif ($p -isnot [string] -and $p.presentation) {
-		$title = "$($p.presentation)"
+		$title = $p.presentation
 	}
 	if ($title) {
 		Emit-MLText -tag "title" -text $title -indent "`t`t"
@@ -1012,14 +1025,9 @@ function Emit-SingleParam {
 			X "`t`t<availableValue>"
 			X "`t`t`t<value xsi:type=`"$avType`">$(Esc-Xml $avVal)</value>"
 			# `title` accepted as synonym of `presentation` — both map to the same UI label.
-			$avPres = if ($av.presentation) { "$($av.presentation)" } elseif ($av.title) { "$($av.title)" } else { "" }
+			$avPres = if ($av.presentation) { $av.presentation } elseif ($av.title) { $av.title } else { "" }
 			if ($avPres) {
-				X "`t`t`t<presentation xsi:type=`"v8:LocalStringType`">"
-				X "`t`t`t`t<v8:item>"
-				X "`t`t`t`t`t<v8:lang>ru</v8:lang>"
-				X "`t`t`t`t`t<v8:content>$(Esc-Xml $avPres)</v8:content>"
-				X "`t`t`t`t</v8:item>"
-				X "`t`t`t</presentation>"
+				Emit-MLText -tag "presentation" -text $avPres -indent "`t`t`t"
 			}
 			X "`t`t</availableValue>"
 		}
@@ -1413,12 +1421,7 @@ function Emit-AreaTemplateDSL {
 					} else {
 						# Static text
 						X "`t`t`t`t`t<dcsat:item xsi:type=`"dcsat:Field`">"
-						X "`t`t`t`t`t`t<dcsat:value xsi:type=`"v8:LocalStringType`">"
-						X "`t`t`t`t`t`t`t<v8:item>"
-						X "`t`t`t`t`t`t`t`t<v8:lang>ru</v8:lang>"
-						X "`t`t`t`t`t`t`t`t<v8:content>$(Esc-Xml $cellStr)</v8:content>"
-						X "`t`t`t`t`t`t`t</v8:item>"
-						X "`t`t`t`t`t`t</dcsat:value>"
+						Emit-MLText -tag "dcsat:value" -text $cellStr -indent "`t`t`t`t`t`t"
 						X "`t`t`t`t`t</dcsat:item>"
 					}
 				}
@@ -1635,12 +1638,7 @@ function Emit-FilterItem {
 	}
 
 	if ($item.presentation) {
-		X "$indent`t<dcsset:presentation xsi:type=`"v8:LocalStringType`">"
-		X "$indent`t`t<v8:item>"
-		X "$indent`t`t`t<v8:lang>ru</v8:lang>"
-		X "$indent`t`t`t<v8:content>$(Esc-Xml "$($item.presentation)")</v8:content>"
-		X "$indent`t`t</v8:item>"
-		X "$indent`t</dcsset:presentation>"
+		Emit-MLText -tag "dcsset:presentation" -text $item.presentation -indent "$indent`t"
 	}
 
 	if ($item.viewMode) {
@@ -1653,12 +1651,7 @@ function Emit-FilterItem {
 	}
 
 	if ($item.userSettingPresentation) {
-		X "$indent`t<dcsset:userSettingPresentation xsi:type=`"v8:LocalStringType`">"
-		X "$indent`t`t<v8:item>"
-		X "$indent`t`t`t<v8:lang>ru</v8:lang>"
-		X "$indent`t`t`t<v8:content>$(Esc-Xml "$($item.userSettingPresentation)")</v8:content>"
-		X "$indent`t`t</v8:item>"
-		X "$indent`t</dcsset:userSettingPresentation>"
+		Emit-MLText -tag "dcsset:userSettingPresentation" -text $item.userSettingPresentation -indent "$indent`t"
 	}
 
 	X "$indent</dcsset:item>"
@@ -1747,12 +1740,7 @@ function Emit-AppearanceValue {
 	} elseif ($actualVal -eq "true" -or $actualVal -eq "false") {
 		X "$indent`t<dcscor:value xsi:type=`"xs:boolean`">$actualVal</dcscor:value>"
 	} elseif ($key -eq "Текст" -or $key -eq "Заголовок" -or $key -eq "Формат") {
-		X "$indent`t<dcscor:value xsi:type=`"v8:LocalStringType`">"
-		X "$indent`t`t<v8:item>"
-		X "$indent`t`t`t<v8:lang>ru</v8:lang>"
-		X "$indent`t`t`t<v8:content>$(Esc-Xml $actualVal)</v8:content>"
-		X "$indent`t`t</v8:item>"
-		X "$indent`t</dcscor:value>"
+		Emit-MLText -tag "dcscor:value" -text $actualVal -indent "$indent`t"
 	} else {
 		X "$indent`t<dcscor:value xsi:type=`"xs:string`">$(Esc-Xml $actualVal)</dcscor:value>"
 	}
@@ -1831,12 +1819,7 @@ function Emit-OutputParameters {
 		X "$indent`t<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
 		X "$indent`t`t<dcscor:parameter>$(Esc-Xml $key)</dcscor:parameter>"
 		if ($ptype -eq "mltext") {
-			X "$indent`t`t<dcscor:value xsi:type=`"v8:LocalStringType`">"
-			X "$indent`t`t`t<v8:item>"
-			X "$indent`t`t`t`t<v8:lang>ru</v8:lang>"
-			X "$indent`t`t`t`t<v8:content>$(Esc-Xml $val)</v8:content>"
-			X "$indent`t`t`t</v8:item>"
-			X "$indent`t`t</dcscor:value>"
+			Emit-MLText -tag "dcscor:value" -text $val -indent "$indent`t`t"
 		} else {
 			X "$indent`t`t<dcscor:value xsi:type=`"$ptype`">$(Esc-Xml $val)</dcscor:value>"
 		}
@@ -1925,12 +1908,7 @@ function Emit-DataParameters {
 		}
 
 		if ($dp.userSettingPresentation) {
-			X "$indent`t`t<dcsset:userSettingPresentation xsi:type=`"v8:LocalStringType`">"
-			X "$indent`t`t`t<v8:item>"
-			X "$indent`t`t`t`t<v8:lang>ru</v8:lang>"
-			X "$indent`t`t`t`t<v8:content>$(Esc-Xml "$($dp.userSettingPresentation)")</v8:content>"
-			X "$indent`t`t`t</v8:item>"
-			X "$indent`t`t</dcsset:userSettingPresentation>"
+			Emit-MLText -tag "dcsset:userSettingPresentation" -text $dp.userSettingPresentation -indent "$indent`t`t"
 		}
 
 		X "$indent`t</dcscor:item>"
@@ -2166,13 +2144,8 @@ function Emit-SettingsVariants {
 		X "`t<settingsVariant>"
 		X "`t`t<dcsset:name>$(Esc-Xml "$($v.name)")</dcsset:name>"
 
-		$pres = if ($v.presentation) { "$($v.presentation)" } elseif ($v.title) { "$($v.title)" } else { "$($v.name)" }
-		X "`t`t<dcsset:presentation xsi:type=`"v8:LocalStringType`">"
-		X "`t`t`t<v8:item>"
-		X "`t`t`t`t<v8:lang>ru</v8:lang>"
-		X "`t`t`t`t<v8:content>$(Esc-Xml $pres)</v8:content>"
-		X "`t`t`t</v8:item>"
-		X "`t`t</dcsset:presentation>"
+		$pres = if ($v.presentation) { $v.presentation } elseif ($v.title) { $v.title } else { "$($v.name)" }
+		Emit-MLText -tag "dcsset:presentation" -text $pres -indent "`t`t"
 
 		X "`t`t<dcsset:settings xmlns:style=`"http://v8.1c.ru/8.1/data/ui/style`" xmlns:sys=`"http://v8.1c.ru/8.1/data/ui/fonts/system`" xmlns:web=`"http://v8.1c.ru/8.1/data/ui/colors/web`" xmlns:win=`"http://v8.1c.ru/8.1/data/ui/colors/windows`">"
 
