@@ -1,4 +1,4 @@
-﻿# skd-compile v1.19 — Compile 1C DCS from JSON
+﻿# skd-compile v1.20 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -179,6 +179,20 @@ function Resolve-TypeStr {
 }
 
 function Emit-ValueType {
+	param($typeStr, [string]$indent)
+
+	if (-not $typeStr) { return }
+
+	# Multi-type: iterate and emit each type with its qualifiers
+	if ($typeStr -is [array] -or $typeStr -is [System.Collections.IList]) {
+		foreach ($t in $typeStr) { Emit-SingleValueType -typeStr "$t" -indent $indent }
+		return
+	}
+
+	Emit-SingleValueType -typeStr "$typeStr" -indent $indent
+}
+
+function Emit-SingleValueType {
 	param([string]$typeStr, [string]$indent)
 
 	if (-not $typeStr) { return }
@@ -597,7 +611,13 @@ function Emit-Field {
 			dataPath = if ($fieldDef.dataPath) { "$($fieldDef.dataPath)" } elseif ($fieldDef.field) { "$($fieldDef.field)" } else { "" }
 			field = if ($fieldDef.field) { "$($fieldDef.field)" } else { "$($fieldDef.dataPath)" }
 			title = if ($fieldDef.title) { "$($fieldDef.title)" } else { "" }
-			type = if ($fieldDef.type) { Resolve-TypeStr "$($fieldDef.type)" } else { "" }
+			type = if ($fieldDef.type) {
+				if ($fieldDef.type -is [array] -or $fieldDef.type -is [System.Collections.IList]) {
+					@($fieldDef.type | ForEach-Object { Resolve-TypeStr "$_" })
+				} else {
+					Resolve-TypeStr "$($fieldDef.type)"
+				}
+			} else { "" }
 			roles = @()
 			restrict = @()
 			appearance = [ordered]@{}

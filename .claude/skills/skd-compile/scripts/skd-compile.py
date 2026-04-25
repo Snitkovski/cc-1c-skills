@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# skd-compile v1.19 — Compile 1C DCS from JSON
+# skd-compile v1.20 — Compile 1C DCS from JSON
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 import argparse
 import json
@@ -115,7 +115,20 @@ def resolve_type_str(type_str):
     return type_str
 
 
-def emit_value_type(lines, type_str, indent):
+def emit_value_type(lines, type_spec, indent):
+    if not type_spec:
+        return
+
+    # Multi-type: iterate and emit each type with its qualifiers
+    if isinstance(type_spec, list):
+        for t in type_spec:
+            emit_single_value_type(lines, str(t), indent)
+        return
+
+    emit_single_value_type(lines, str(type_spec), indent)
+
+
+def emit_single_value_type(lines, type_str, indent):
     if not type_str:
         return
 
@@ -484,7 +497,11 @@ def emit_field(lines, field_def, indent):
             'dataPath': str(field_def.get('dataPath', '')) or str(field_def.get('field', '')),
             'field': str(field_def.get('field', '')) or str(field_def.get('dataPath', '')),
             'title': str(field_def.get('title', '')) if field_def.get('title') else '',
-            'type': resolve_type_str(str(field_def['type'])) if field_def.get('type') else '',
+            'type': (
+                [resolve_type_str(str(t)) for t in field_def['type']]
+                if isinstance(field_def['type'], list)
+                else resolve_type_str(str(field_def['type']))
+            ) if field_def.get('type') else '',
             'roles': [],
             'restrict': [],
             'appearance': {},
