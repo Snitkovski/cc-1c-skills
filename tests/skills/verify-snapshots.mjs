@@ -320,6 +320,11 @@ const STANDALONE_SKILLS = new Set([
   'mxl-compile', 'mxl-decompile', 'mxl-info', 'mxl-validate',
 ]);
 
+// Standalone skills that CAN be platform-verified by wrapping their output in
+// an external report (ERF) and running erf-build — the platform parses the
+// schema and we know if it's accepted.
+const SKD_PLATFORM_VERIFY = new Set(['skd-compile']);
+
 // EPF/ERF skills — need epf-build to verify, not LoadConfigFromFiles
 const EPF_SKILLS = new Set([
   'epf-init', 'erf-init', 'template-add', 'help-add',
@@ -511,6 +516,50 @@ async function verifyCase(skillName, caseName, skillConfig, caseData, opts) {
     if (inputFile && existsSync(inputFile)) rmSync(inputFile);
 
     // ── Step 5: Determine verification strategy ──
+    if (SKD_PLATFORM_VERIFY.has(skillName)) {
+      // Wrap produced Template.xml in an external report (ERF) and try to build —
+      // platform either accepts the schema or rejects it with an error.
+      if (!opts.v8ctx) {
+        result.passed = true;
+        log('platform-load', true, 'skipped (no v8 context)');
+        return result;
+      }
+      const tplName = caseData.params?.outputPath || 'Template.xml';
+      const tplPath = join(workDir, tplName);
+      if (!existsSync(tplPath)) {
+        result.errors.push(`Output not produced at ${tplPath}`);
+        return result;
+      }
+      const erfDir = join(workDir, 'erf-src');
+      const erfOutDir = join(workDir, 'erf-build');
+      mkdirSync(erfOutDir, { recursive: true });
+      try {
+        execSkill(opts.runtime, 'erf-init/scripts/init', ['-Name', 'TestReport', '-SrcDir', erfDir, '-WithSKD']);
+        log('erf-init', true);
+      } catch (e) {
+        const detail = (e.stderr || e.stdout || e.message).trim();
+        log('erf-init', false, detail);
+        result.errors.push(`erf-init failed: ${detail.substring(0, 500)}`);
+        return result;
+      }
+      const dcsTpl = join(erfDir, 'TestReport', 'Templates', 'ОсновнаяСхемаКомпоновкиДанных', 'Ext', 'Template.xml');
+      cpSync(tplPath, dcsTpl, { force: true });
+      try {
+        execSkill(opts.runtime, 'epf-build/scripts/epf-build', [
+          '-V8Path', opts.v8ctx.v8path,
+          '-SourceFile', join(erfDir, 'TestReport.xml'),
+          '-OutputFile', join(erfOutDir, 'TestReport.erf'),
+        ], 120_000);
+        log('erf-build', true, 'platform accepted schema');
+        result.passed = true;
+      } catch (e) {
+        const detail = (e.stderr || e.stdout || e.message).trim();
+        log('erf-build', false, detail);
+        result.errors.push(`erf-build rejected schema: ${detail.substring(0, 1000)}`);
+      }
+      return result;
+    }
+
     if (isStandalone) {
       result.passed = true;
       log('platform-load', true, 'skipped (standalone file, not a config)');
