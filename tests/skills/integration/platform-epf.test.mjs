@@ -39,7 +39,7 @@ export const steps = [
         { id: 'Загрузить', title: 'Загрузить' },
       ],
     },
-    args: { '-FormPath': '{workDir}/RoundtripТест/Forms/Форма', '-JsonPath': '{inputFile}' },
+    args: { '-OutputPath': '{workDir}/RoundtripТест/Forms/Форма/Ext/Form.xml', '-JsonPath': '{inputFile}' },
   },
 
   // ── 3. Build EPF binary ──
