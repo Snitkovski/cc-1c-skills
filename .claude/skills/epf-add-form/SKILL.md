@@ -1,6 +1,6 @@
 ---
 name: epf-add-form
-description: Добавить управляемую форму к внешней обработке 1С
+description: Добавить пустую управляемую форму к внешней обработке или отчёту (EPF/ERF). Используй когда нужно создать форму у внешней обработки или отчёта
 argument-hint: <ProcessorName> <FormName> [Synonym]
 allowed-tools:
   - Bash

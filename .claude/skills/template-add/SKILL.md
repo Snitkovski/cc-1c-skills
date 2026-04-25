@@ -1,6 +1,6 @@
 ---
 name: template-add
-description: Добавить макет к объекту 1С (обработка, отчёт, справочник, документ и др.)
+description: Добавить пустой макет к объекту 1С. Используй когда нужно создать у объекта новый макет
 argument-hint: <ObjectName> <TemplateName> <TemplateType>
 allowed-tools:
   - Bash
